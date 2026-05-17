@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Navigation Display (ND)</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="instrument" aria-label="Airbus-style navigation display">
+      <canvas id="ndCanvas" width="960" height="960"></canvas>
+
+      <div class="readout top-left" aria-hidden="true">
+        <div class="speed-row">
+          <span>GS</span><strong id="gsReadout">0</strong>
+          <span>TAS</span><strong id="tasReadout">---</strong>
+        </div>
+        <div class="wind-row">
+          <div class="wind-values">
+            <strong id="windDirectionReadoutTop">000</strong><span>/</span><strong id="windSpeedReadoutTop">0</strong>
+          </div>
+          <i id="windArrow" class="wind-arrow"></i>
+        </div>
+      </div>
+      <div class="readout top-right" aria-hidden="true">
+        <strong id="headingReadout">257</strong>
+        <span class="distance-line"><strong id="nextDistanceReadout">1</strong><em>NM</em></span>
+        <strong id="etaReadout">00:00</strong>
+      </div>
+
+      <div class="radios bottom-left" aria-hidden="true">
+        <span>VOR1</span><strong id="vor1Freq">110.90</strong>
+        <em id="vor1Dist">0.38NM</em>
+      </div>
+      <div class="ta-only" id="trafficStatus" aria-hidden="true">TA ONLY</div>
+      <div class="radios bottom-right" aria-hidden="true">
+        <span>VOR2</span><strong id="vor2Freq">115.15</strong>
+        <em id="vor2Dist">--- NM</em>
+      </div>
+    </section>
+
+    <aside class="controls" aria-label="Navigation display controls">
+      <div class="control-row">
+        <label for="rangeControl">Range</label>
+        <select id="rangeControl">
+          <option value="10">10 NM</option>
+          <option value="20" selected>20 NM</option>
+          <option value="40">40 NM</option>
+          <option value="80">80 NM</option>
+          <option value="160">160 NM</option>
+          <option value="320">320 NM</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="headingControl">Heading</label>
+        <input id="headingControl" type="range" min="0" max="359" value="257" />
+      </div>
+      <div class="control-row">
+        <label for="latitudeControl">Latitude</label>
+        <input id="latitudeControl" type="number" step="0.000001" value="35.765278" />
+      </div>
+      <div class="control-row">
+        <label for="longitudeControl">Longitude</label>
+        <input id="longitudeControl" type="number" step="0.000001" value="140.385556" />
+      </div>
+      <div class="control-row">
+        <label for="progressControl">Route Progress</label>
+        <input id="progressControl" type="range" min="0" max="1000" value="0" />
+        <output id="progressReadout" for="progressControl">0%</output>
+      </div>
+      <div class="control-row">
+        <label for="trueAirSpeedControl">True Air Speed</label>
+        <input id="trueAirSpeedControl" type="range" min="0" max="500" step="1" value="250" />
+        <output id="trueAirSpeedReadout" for="trueAirSpeedControl">250 NM/H</output>
+      </div>
+      <div class="control-row">
+        <label for="windSpeedControl">Wind Speed</label>
+        <input id="windSpeedControl" type="range" min="0" max="200" step="1" value="0" />
+        <output id="windSpeedReadout" for="windSpeedControl">0 NM/H</output>
+      </div>
+      <div class="control-row">
+        <label for="windDirectionControl">Wind Direction</label>
+        <input id="windDirectionControl" type="range" min="0" max="359" step="1" value="0" />
+        <output id="windDirectionReadout" for="windDirectionControl">000°</output>
+      </div>
+      <div class="control-row">
+        <label for="trafficControl">Traffic</label>
+        <select id="trafficControl">
+          <option value="HIDDEN" selected>Hidden</option>
+          <option value="TA ONLY">TA Only</option>
+          <option value="TA/RA">TA/RA</option>
+        </select>
+      </div>
+      <div class="segmented" role="group" aria-label="ND mode">
+        <button type="button" class="active" data-mode="ARC">ARC</button>
+        <button type="button" data-mode="ROSE">ROSE</button>
+        <button type="button" data-mode="PLAN">PLAN</button>
+      </div>
+      <div class="control-actions">
+        <button type="button" id="playButton">Play</button>
+        <button type="button" id="recenterButton">Reset</button>
+      </div>
+    </aside>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

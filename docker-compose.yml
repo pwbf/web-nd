@@ -1,0 +1,11 @@
+services:
+  nd-webui:
+    build: .
+    image: nd-webui
+    ports:
+      - "8500:8500"
+    environment:
+      PORT: 8500
+    restart: unless-stopped
+    volumes:
+      - ./public:/usr/src/app/public:ro
