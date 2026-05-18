@@ -673,7 +673,7 @@ function drawRange(view) {
   ctx.font = `22px ${FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  [1, 2].forEach((multiple) => {
+  [2, 3].forEach((multiple) => {
     const radius = (view.arcRadius * multiple) / 4;
     const label = rangeLabel(d * multiple);
     const offsetRadians = angleForOffset(58);
