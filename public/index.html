@@ -25,7 +25,7 @@
       </div>
       <div class="readout top-right" aria-hidden="true">
         <strong id="headingReadout">257</strong>
-        <span class="distance-line"><strong id="nextDistanceReadout">1</strong><em>NM</em></span>
+        <span class="distance-line"><strong id="nextDistanceReadout">1</strong><em id="distanceUnitReadout">NM</em></span>
         <strong id="etaReadout">00:00</strong>
       </div>
 
@@ -44,12 +44,20 @@
       <div class="control-row">
         <label for="rangeControl">Range</label>
         <select id="rangeControl">
-          <option value="10">10 NM</option>
-          <option value="20" selected>20 NM</option>
+          <option value="1">1 NM</option>
+          <option value="10" selected>10 NM</option>
+          <option value="20">20 NM</option>
           <option value="40">40 NM</option>
           <option value="80">80 NM</option>
           <option value="160">160 NM</option>
           <option value="320">320 NM</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <label for="unitControl">Units</label>
+        <select id="unitControl">
+          <option value="NM" selected>NM (Nautical Miles)</option>
+          <option value="m">m (meters)</option>
         </select>
       </div>
       <div class="control-row">
@@ -64,12 +72,12 @@
         <label for="longitudeControl">Longitude</label>
         <input id="longitudeControl" type="number" step="0.000001" value="140.385556" />
       </div>
-      <div class="control-row">
+      <div class="control-row" id="progressControlRow">
         <label for="progressControl">Route Progress</label>
         <input id="progressControl" type="range" min="0" max="1000" value="0" />
         <output id="progressReadout" for="progressControl">0%</output>
       </div>
-      <div class="control-row">
+      <div class="control-row" id="trueAirSpeedControlRow">
         <label for="trueAirSpeedControl">True Air Speed</label>
         <input id="trueAirSpeedControl" type="range" min="0" max="500" step="1" value="250" />
         <output id="trueAirSpeedReadout" for="trueAirSpeedControl">250 NM/H</output>
@@ -98,9 +106,18 @@
         <button type="button" data-mode="PLAN">PLAN</button>
       </div>
       <div class="control-actions">
+        <button type="button" id="locationButton">Use GPS</button>
         <button type="button" id="playButton">Play</button>
         <button type="button" id="recenterButton">Reset</button>
       </div>
+      <label class="check-row" for="fakeHeadingControl">
+        <input id="fakeHeadingControl" type="checkbox" />
+        <span>Fake Heading</span>
+      </label>
+      <details class="debug-panel">
+        <summary>Debug</summary>
+        <pre id="debugLog" class="debug-log" aria-live="polite"></pre>
+      </details>
     </aside>
   </main>
   <script src="app.js"></script>

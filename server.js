@@ -1,8 +1,11 @@
 const express = require('express');
 const fs = require('fs');
+const https = require('https');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 8500;
+const HTTPS_CERT_PATH = process.env.HTTPS_CERT_PATH || path.join(__dirname, 'cert', 'server.crt');
+const HTTPS_KEY_PATH = process.env.HTTPS_KEY_PATH || path.join(__dirname, 'cert', 'server.key');
 
 function decodeXml(text) {
   return text
@@ -137,7 +140,7 @@ function parseKmlFiles() {
     trueAirSpeed: 250,
     groundSpeed: 250,
     wind: {direction: 0, speed: 0},
-    rangeNm: 40,
+    rangeNm: 10,
     nextWaypoint: nextWaypoint.id,
     distanceNm: nextWaypoint.distanceNm,
     waypoints,
@@ -156,7 +159,7 @@ const fallbackNavigationState = {
   track: 257,
   groundSpeed: 250,
   trueAirSpeed: 250,
-  rangeNm: 20,
+  rangeNm: 10,
   trafficMode: 'HIDDEN',
   nextWaypoint: '87POY',
   eta: '00:00',
@@ -202,6 +205,11 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`ND web UI listening on http://0.0.0.0:${PORT}`);
+const httpsOptions = {
+  cert: fs.readFileSync(HTTPS_CERT_PATH),
+  key: fs.readFileSync(HTTPS_KEY_PATH),
+};
+
+https.createServer(httpsOptions, app).listen(PORT, () => {
+  console.log(`ND web UI listening on https://0.0.0.0:${PORT}`);
 });

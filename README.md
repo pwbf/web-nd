@@ -29,7 +29,9 @@ This is intentionally small so a future Google Maps Navigation API adapter can t
    ```bash
    npm start
    ```
-3. Open `http://localhost:8500`
+3. Open `https://localhost:8500`
+
+The server expects a local self-signed certificate at `cert/server.crt` and key at `cert/server.key`. You can override those paths with `HTTPS_CERT_PATH` and `HTTPS_KEY_PATH`.
 
 ## Run with Docker
 
@@ -43,7 +45,7 @@ Run the container:
 docker run --rm -p 8500:8500 nd-webui
 ```
 
-Then open `http://localhost:8500`.
+Then open `https://localhost:8500`.
 
 Or use Docker Compose:
 

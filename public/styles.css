@@ -124,6 +124,10 @@ body {
   transform-origin: 50% 50%;
 }
 
+.wind-arrow[hidden] {
+  display: none;
+}
+
 .wind-arrow::after {
   content: "";
   position: absolute;
@@ -243,6 +247,10 @@ body {
   gap: 7px;
 }
 
+.control-row[hidden] {
+  display: none;
+}
+
 label {
   color: #aeb4ba;
   font-size: 13px;
@@ -285,7 +293,7 @@ output {
 }
 
 .control-actions {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
 }
 
 button {
@@ -307,6 +315,51 @@ button.active {
   border-color: var(--cyan);
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+  color: #dfe7ea;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--cyan);
+}
+
+.debug-panel {
+  border-top: 1px solid #252b33;
+  padding-top: 10px;
+}
+
+.debug-panel summary {
+  color: #aeb4ba;
+  cursor: pointer;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  list-style-position: outside;
+  text-transform: uppercase;
+}
+
+.debug-log {
+  width: 100%;
+  max-height: 220px;
+  margin: 10px 0 0;
+  overflow: auto;
+  color: #9ff7b0;
+  background: #030405;
+  border: 1px solid #26302b;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 920px) {
   body {
     align-items: start;
@@ -321,7 +374,9 @@ button.active {
   }
 
   .segmented,
-  .control-actions {
+  .control-actions,
+  .check-row,
+  .debug-panel {
     grid-column: 1 / -1;
   }
 }

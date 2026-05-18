@@ -14,6 +14,7 @@ const colors = {
 const ARC_SWEEP_DEG = 142;
 const ARC_HALF_SWEEP = ARC_SWEEP_DEG / 2;
 const FONT = '"Roboto Mono", "Consolas", "Lucida Console", monospace';
+const METERS_PER_NM = 1852;
 
 const fallbackState = {
   callsign: 'JX801',
@@ -24,7 +25,7 @@ const fallbackState = {
   track: 257,
   groundSpeed: 250,
   trueAirSpeed: 250,
-  rangeNm: 20,
+  rangeNm: 10,
   currentPosition: {lat: 35.765278, lon: 140.385556, altitudeFt: 41, routeDistanceNm: 0},
   routePath: [],
   routeDistanceNm: 0,
@@ -56,6 +57,8 @@ const state = structuredClone(fallbackState);
 let simulationPlaying = false;
 let lastTime = performance.now();
 let baselineState = structuredClone(fallbackState);
+let locationWatchId = null;
+let previousGpsPosition = null;
 
 const els = {
   gs: document.getElementById('gsReadout'),
@@ -65,6 +68,7 @@ const els = {
   windSpeedTop: document.getElementById('windSpeedReadoutTop'),
   heading: document.getElementById('headingReadout'),
   nextDistance: document.getElementById('nextDistanceReadout'),
+  distanceUnit: document.getElementById('distanceUnitReadout'),
   eta: document.getElementById('etaReadout'),
   vor1Freq: document.getElementById('vor1Freq'),
   vor1Dist: document.getElementById('vor1Dist'),
@@ -73,21 +77,38 @@ const els = {
   trafficStatus: document.getElementById('trafficStatus'),
   trafficControl: document.getElementById('trafficControl'),
   range: document.getElementById('rangeControl'),
+  unit: document.getElementById('unitControl'),
   headingControl: document.getElementById('headingControl'),
   latitudeControl: document.getElementById('latitudeControl'),
   longitudeControl: document.getElementById('longitudeControl'),
   progressControl: document.getElementById('progressControl'),
+  progressControlRow: document.getElementById('progressControlRow'),
   progressReadout: document.getElementById('progressReadout'),
   trueAirSpeedControl: document.getElementById('trueAirSpeedControl'),
+  trueAirSpeedControlRow: document.getElementById('trueAirSpeedControlRow'),
   trueAirSpeedReadout: document.getElementById('trueAirSpeedReadout'),
   windSpeedControl: document.getElementById('windSpeedControl'),
   windSpeedReadout: document.getElementById('windSpeedReadout'),
   windDirectionControl: document.getElementById('windDirectionControl'),
   windDirectionReadout: document.getElementById('windDirectionReadout'),
   play: document.getElementById('playButton'),
+  location: document.getElementById('locationButton'),
+  fakeHeading: document.getElementById('fakeHeadingControl'),
   recenter: document.getElementById('recenterButton'),
+  debugLog: document.getElementById('debugLog'),
   modeButtons: document.querySelectorAll('[data-mode]'),
 };
+
+function debugValue(value, formatter = (nextValue) => nextValue) {
+  return Number.isFinite(value) ? formatter(value) : 'n/a';
+}
+
+function debugLog(message) {
+  const timestamp = new Date().toLocaleTimeString();
+  const nextLine = `[${timestamp}] ${message}`;
+  const lines = [nextLine, ...(els.debugLog.textContent ? els.debugLog.textContent.split('\n') : [])].slice(0, 80);
+  els.debugLog.textContent = lines.join('\n');
+}
 
 function normalizeDegrees(value) {
   return ((value % 360) + 360) % 360;
@@ -96,6 +117,48 @@ function normalizeDegrees(value) {
 function headingText(value) {
   const normalized = Math.round(normalizeDegrees(value));
   return String(normalized === 0 ? 360 : normalized).padStart(3, '0');
+}
+
+function syncHeadingControl() {
+  els.headingControl.value = String(Math.round(normalizeDegrees(state.heading)) % 360);
+}
+
+function useMeters() {
+  return els.unit.value === 'm';
+}
+
+function metersPerSecondToNmPerHour(value) {
+  return (value * 3600) / METERS_PER_NM;
+}
+
+function nmPerHourToMetersPerSecond(value) {
+  return (value * METERS_PER_NM) / 3600;
+}
+
+function distanceValue(valueNm) {
+  return useMeters() ? valueNm * METERS_PER_NM : valueNm;
+}
+
+function distanceUnitText() {
+  return useMeters() ? 'm' : 'NM';
+}
+
+function speedText(valueNmPerHour) {
+  if (useMeters()) {
+    return `${Math.round(nmPerHourToMetersPerSecond(valueNmPerHour))} m/s`;
+  }
+  return `${Math.round(valueNmPerHour)} NM/H`;
+}
+
+function speedReadoutValue(valueNmPerHour) {
+  return Math.round(useMeters() ? nmPerHourToMetersPerSecond(valueNmPerHour) : valueNmPerHour);
+}
+
+function syncRangeOptionLabels() {
+  [...els.range.options].forEach((option) => {
+    const valueNm = Number(option.value);
+    option.textContent = useMeters() ? `${Math.round(valueNm * METERS_PER_NM)} m` : `${valueNm} NM`;
+  });
 }
 
 function bearingDelta(bearing, heading) {
@@ -153,13 +216,19 @@ function applyWindCorrection() {
 
 function nmText(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return '--- NM';
+    return `--- ${distanceUnitText()}`;
   }
-  return `${Number(value).toFixed(value < 10 ? 2 : 0)}NM`;
+  const displayValue = distanceValue(Number(value));
+  const decimals = useMeters() ? 0 : displayValue < 10 ? 2 : 0;
+  return `${displayValue.toFixed(decimals)}${distanceUnitText()}`;
 }
 
 function rangeLabel(value) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  const displayValue = distanceValue(value);
+  if (useMeters()) {
+    return String(Math.round(displayValue));
+  }
+  return Number.isInteger(displayValue) ? String(displayValue) : displayValue.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 function etaText(distanceNm, groundSpeed) {
@@ -181,12 +250,13 @@ function mergeNavigation(nextState) {
   state.route = nextState.route || state.route;
   state.routePath = nextState.routePath || state.routePath || [];
   els.range.value = String(state.rangeNm);
+  syncRangeOptionLabels();
   els.trafficControl.value = state.trafficMode || 'HIDDEN';
-  els.headingControl.value = String(Math.round(state.heading));
+  syncHeadingControl();
   els.trueAirSpeedControl.value = String(Math.round(state.trueAirSpeed));
-  els.trueAirSpeedReadout.textContent = `${Math.round(state.trueAirSpeed)} NM/H`;
+  els.trueAirSpeedReadout.textContent = speedText(state.trueAirSpeed);
   els.windSpeedControl.value = String(Math.round(state.wind.speed));
-  els.windSpeedReadout.textContent = `${Math.round(state.wind.speed)} NM/H`;
+  els.windSpeedReadout.textContent = speedText(state.wind.speed);
   els.windDirectionControl.value = String(Math.round(state.wind.direction));
   els.windDirectionReadout.textContent = `${headingText(state.wind.direction)}°`;
   syncPositionControls();
@@ -206,13 +276,15 @@ async function loadNavigation() {
 }
 
 function syncReadouts() {
-  els.gs.textContent = Math.round(state.groundSpeed);
-  els.tas.textContent = Math.round(state.trueAirSpeed);
+  els.gs.textContent = speedReadoutValue(state.groundSpeed);
+  els.tas.textContent = speedReadoutValue(state.trueAirSpeed);
   els.windDirectionTop.textContent = headingText(state.wind.direction);
   els.windSpeedTop.textContent = Math.round(state.wind.speed);
   els.windArrow.style.transform = `rotate(${bearingDelta(state.wind.direction, state.heading) - 90}deg)`;
+  els.windArrow.hidden = Math.round(state.wind.speed) <= 0;
   els.heading.textContent = headingText(state.track);
-  els.nextDistance.textContent = Number(state.distanceNm).toFixed(0);
+  els.nextDistance.textContent = Math.round(distanceValue(Number(state.distanceNm)));
+  els.distanceUnit.textContent = distanceUnitText();
   els.eta.textContent = etaText(state.distanceNm, state.groundSpeed);
   els.vor1Freq.textContent = state.radios.vor1.frequency;
   els.vor1Dist.textContent = nmText(state.radios.vor1.distanceNm);
@@ -286,7 +358,7 @@ function nearestRouteDistance(position) {
   }, {distance: Number.POSITIVE_INFINITY, routeDistanceNm: 0}).routeDistanceNm;
 }
 
-function recomputeNavigationFromPosition() {
+function recomputeNavigationFromPosition({updateHeading = true} = {}) {
   const ownship = state.currentPosition;
   if (!ownship) return;
   if (!state.waypoints.every((wp) => Number.isFinite(wp.lat) && Number.isFinite(wp.lon))) return;
@@ -308,10 +380,107 @@ function recomputeNavigationFromPosition() {
     nextWaypoint.kind = 'active';
     state.nextWaypoint = nextWaypoint.id;
     state.distanceNm = nextWaypoint.distanceNm;
-    state.heading = nextWaypoint.bearing;
-    els.headingControl.value = String(Math.round(state.heading));
+    if (updateHeading) {
+      state.heading = nextWaypoint.bearing;
+      syncHeadingControl();
+    }
     applyWindCorrection();
   }
+}
+
+function stopLocationWatch() {
+  if (locationWatchId !== null) {
+    navigator.geolocation.clearWatch(locationWatchId);
+    locationWatchId = null;
+    previousGpsPosition = null;
+    debugLog('GPS watch stopped');
+  }
+  els.location.textContent = 'Use GPS';
+  els.location.classList.remove('active');
+  els.progressControlRow.hidden = false;
+  els.trueAirSpeedControlRow.hidden = false;
+}
+
+function applyBrowserPosition(position) {
+  const {latitude, longitude, altitude, accuracy, altitudeAccuracy, heading, speed} = position.coords;
+  const gpsPosition = {lat: latitude, lon: longitude};
+  const movementDistanceM = previousGpsPosition ? distanceNmBetween(previousGpsPosition, gpsPosition) * METERS_PER_NM : 0;
+  const fakeHeading = previousGpsPosition && movementDistanceM >= 1
+    ? bearingBetween(previousGpsPosition, gpsPosition)
+    : null;
+  const useFakeHeading = els.fakeHeading.checked && Number.isFinite(fakeHeading);
+
+  state.currentPosition = {
+    ...(state.currentPosition || {}),
+    lat: latitude,
+    lon: longitude,
+    altitudeFt: Number.isFinite(altitude) ? Math.round(altitude * 3.28084) : state.currentPosition?.altitudeFt || 0,
+    routeDistanceNm: nearestRouteDistance({lat: latitude, lon: longitude}),
+  };
+  state.source = 'GPS';
+  simulationPlaying = false;
+  els.play.textContent = 'Play';
+  syncPositionControls();
+  recomputeNavigationFromPosition({updateHeading: false});
+
+  if (useFakeHeading) {
+    state.heading = fakeHeading;
+    syncHeadingControl();
+  } else if (Number.isFinite(heading)) {
+    state.heading = normalizeDegrees(heading);
+    syncHeadingControl();
+  }
+
+  if (Number.isFinite(speed)) {
+    const speedNmPerHour = metersPerSecondToNmPerHour(speed);
+    state.trueAirSpeed = speedNmPerHour;
+    state.groundSpeed = speedNmPerHour;
+    state.track = state.heading;
+  } else {
+    applyWindCorrection();
+  }
+  debugLog(
+    `GPS lat=${latitude.toFixed(6)} lon=${longitude.toFixed(6)} ` +
+    `accuracy=${debugValue(accuracy, (value) => `${value.toFixed(1)}m`)} ` +
+    `heading=${debugValue(heading, (value) => `${normalizeDegrees(value).toFixed(1)}deg`)} ` +
+    `fakeHeading=${debugValue(fakeHeading, (value) => `${value.toFixed(1)}deg`)} ` +
+    `fakeHeadingMode=${els.fakeHeading.checked ? 'on' : 'off'} ` +
+    `vector=${movementDistanceM.toFixed(1)}m ` +
+    `speed=${debugValue(speed, (value) => `${value.toFixed(2)}m/s`)} ` +
+    `speedNm=${debugValue(speed, (value) => `${metersPerSecondToNmPerHour(value).toFixed(1)}NM/H`)} ` +
+    `alt=${debugValue(altitude, (value) => `${value.toFixed(1)}m`)} ` +
+    `altAccuracy=${debugValue(altitudeAccuracy, (value) => `${value.toFixed(1)}m`)} ` +
+    `browserTs=${new Date(position.timestamp).toLocaleTimeString()}`
+  );
+  previousGpsPosition = gpsPosition;
+}
+
+function handleLocationError(error) {
+  console.warn('Unable to use browser location', error);
+  debugLog(`GPS error ${error.code}: ${error.message}`);
+  stopLocationWatch();
+}
+
+function startLocationWatch() {
+  if (!('geolocation' in navigator)) {
+    console.warn('Geolocation is not supported by this browser.');
+    debugLog('GPS unavailable: geolocation is not supported by this browser');
+    return;
+  }
+
+  els.location.textContent = 'GPS...';
+  previousGpsPosition = null;
+  debugLog('GPS permission requested');
+  locationWatchId = navigator.geolocation.watchPosition(applyBrowserPosition, handleLocationError, {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 10000,
+  });
+  els.location.textContent = 'Stop GPS';
+  els.location.classList.add('active');
+  els.progressControlRow.hidden = true;
+  els.trueAirSpeedControlRow.hidden = true;
+  debugLog(`GPS watch started id=${locationWatchId}`);
 }
 
 function updateModeButtons() {
@@ -538,17 +707,6 @@ function drawRoute(view) {
     ctx.stroke();
   }
 
-  const waypointMap = new Map(state.waypoints.map((wp) => [wp.id, wp]));
-  const active = waypointMap.get(state.nextWaypoint);
-  if (active) {
-    const target = toScreen({...active, bearing: courseAdjustedBearing(active.bearing)}, view);
-    if (target.visible) {
-      ctx.beginPath();
-      ctx.moveTo(view.cx, view.cy);
-      ctx.lineTo(target.x, target.y);
-      ctx.stroke();
-    }
-  }
   ctx.restore();
 }
 
@@ -663,7 +821,15 @@ els.range.addEventListener('change', (event) => {
   state.rangeNm = Number(event.target.value);
 });
 
+els.unit.addEventListener('change', () => {
+  syncRangeOptionLabels();
+  els.trueAirSpeedReadout.textContent = speedText(state.trueAirSpeed);
+  els.windSpeedReadout.textContent = speedText(state.wind.speed);
+  debugLog(`Units changed to ${distanceUnitText()}`);
+});
+
 els.headingControl.addEventListener('input', (event) => {
+  stopLocationWatch();
   state.heading = Number(event.target.value);
   applyWindCorrection();
 });
@@ -684,22 +850,25 @@ function updateManualPosition() {
 }
 
 els.latitudeControl.addEventListener('change', updateManualPosition);
+els.latitudeControl.addEventListener('input', stopLocationWatch);
 els.longitudeControl.addEventListener('change', updateManualPosition);
+els.longitudeControl.addEventListener('input', stopLocationWatch);
 
 els.progressControl.addEventListener('input', (event) => {
+  stopLocationWatch();
   const ratio = Number(event.target.value) / 1000;
   setRouteProgress(ratio);
 });
 
 els.trueAirSpeedControl.addEventListener('input', (event) => {
   state.trueAirSpeed = Number(event.target.value);
-  els.trueAirSpeedReadout.textContent = `${Math.round(state.trueAirSpeed)} NM/H`;
+  els.trueAirSpeedReadout.textContent = speedText(state.trueAirSpeed);
   applyWindCorrection();
 });
 
 els.windSpeedControl.addEventListener('input', (event) => {
   state.wind.speed = Number(event.target.value);
-  els.windSpeedReadout.textContent = `${Math.round(state.wind.speed)} NM/H`;
+  els.windSpeedReadout.textContent = speedText(state.wind.speed);
   applyWindCorrection();
 });
 
@@ -721,11 +890,25 @@ els.modeButtons.forEach((button) => {
 });
 
 els.play.addEventListener('click', () => {
+  stopLocationWatch();
   simulationPlaying = !simulationPlaying;
   els.play.textContent = simulationPlaying ? 'Pause' : 'Play';
 });
 
+els.location.addEventListener('click', () => {
+  if (locationWatchId !== null) {
+    stopLocationWatch();
+  } else {
+    startLocationWatch();
+  }
+});
+
+els.fakeHeading.addEventListener('change', () => {
+  debugLog(`Fake heading ${els.fakeHeading.checked ? 'enabled' : 'disabled'}`);
+});
+
 els.recenter.addEventListener('click', () => {
+  stopLocationWatch();
   mergeNavigation(structuredClone(baselineState));
   simulationPlaying = false;
   els.play.textContent = 'Play';
