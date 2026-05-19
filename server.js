@@ -62,44 +62,44 @@ function nearestRouteDistance(point, routePath) {
   }, {distance: Number.POSITIVE_INFINITY, routeDistanceNm: 0}).routeDistanceNm;
 }
 
-function parseKmlFiles() {
-  const dataDir = path.join(__dirname, 'data');
-  if (!fs.existsSync(dataDir)) {
-    return null;
-  }
-
-  const kmlFiles = fs.readdirSync(dataDir).filter((file) => file.toLowerCase().endsWith('.kml'));
+function parseKmlFile(dataDir, file) {
   const fixes = [];
+  const navaids = [];
   let origin = null;
-  let navLabel = 'KML ROUTE';
+  let navLabel = file;
   let routePath = [];
 
-  kmlFiles.forEach((file) => {
-    const body = fs.readFileSync(path.join(dataDir, file), 'utf8');
-    const documentName = body.match(/<Document>[\s\S]*?<name>([\s\S]*?)<\/name>/);
-    if (documentName) {
-      navLabel = decodeXml(documentName[1].trim());
+  const body = fs.readFileSync(path.join(dataDir, file), 'utf8');
+  const documentName = body.match(/<Document>[\s\S]*?<name>([\s\S]*?)<\/name>/);
+  if (documentName) {
+    navLabel = decodeXml(documentName[1].trim());
+  }
+
+  const routeCoordinates = body.match(/<Placemark>[\s\S]*?<name>\s*Route\s*<\/name>[\s\S]*?<coordinates>([\s\S]*?)<\/coordinates>[\s\S]*?<\/Placemark>/i);
+  if (routeCoordinates) {
+    const coordinates = routeCoordinates[1].trim().split(/\s+/).map(parseCoordinate);
+    routePath = buildRoutePath(coordinates);
+    origin = routePath[0];
+  }
+
+  const placemarks = body.match(/<Placemark>[\s\S]*?<\/Placemark>/g) || [];
+  placemarks.forEach((placemark) => {
+    if (!/<Point>/i.test(placemark)) return;
+    const name = placemark.match(/<name>([\s\S]*?)<\/name>/);
+    const description = placemark.match(/<description>([\s\S]*?)<\/description>/);
+    const coordinates = placemark.match(/<coordinates>([\s\S]*?)<\/coordinates>/);
+    if (!name || !coordinates) return;
+
+    const point = {
+      id: decodeXml(name[1].trim()),
+      ...parseCoordinate(coordinates[1]),
+    };
+    const descriptionText = description ? decodeXml(description[1].trim()) : '';
+    if (/\(Navaids\)/i.test(descriptionText)) {
+      navaids.push(point);
+      return;
     }
-
-    const routeCoordinates = body.match(/<Placemark>[\s\S]*?<name>\s*Route\s*<\/name>[\s\S]*?<coordinates>([\s\S]*?)<\/coordinates>[\s\S]*?<\/Placemark>/i);
-    if (routeCoordinates && !origin) {
-      const coordinates = routeCoordinates[1].trim().split(/\s+/).map(parseCoordinate);
-      routePath = buildRoutePath(coordinates);
-      origin = routePath[0];
-    }
-
-    const placemarks = body.match(/<Placemark>[\s\S]*?<\/Placemark>/g) || [];
-    placemarks.forEach((placemark) => {
-      if (!/<Point>/i.test(placemark)) return;
-      const name = placemark.match(/<name>([\s\S]*?)<\/name>/);
-      const coordinates = placemark.match(/<coordinates>([\s\S]*?)<\/coordinates>/);
-      if (!name || !coordinates) return;
-
-      fixes.push({
-        id: decodeXml(name[1].trim()),
-        ...parseCoordinate(coordinates[1]),
-      });
-    });
+    fixes.push(point);
   });
 
   if (!origin && fixes.length > 0) {
@@ -143,11 +143,39 @@ function parseKmlFiles() {
     rangeNm: 10,
     nextWaypoint: nextWaypoint.id,
     distanceNm: nextWaypoint.distanceNm,
+    navaids: navaids.map((navaid) => ({
+      id: navaid.id,
+      bearing: bearingDeg(origin, navaid),
+      distanceNm: distanceNm(origin, navaid),
+      lat: navaid.lat,
+      lon: navaid.lon,
+      altitudeFt: Math.round(navaid.altitude),
+    })),
+    radios: {
+      vor1: {name: navaids[0]?.id || null, bearing: navaids[0] ? bearingDeg(origin, navaids[0]) : null, distanceNm: navaids[0] ? distanceNm(origin, navaids[0]) : null},
+      vor2: {name: navaids[0]?.id || null, bearing: navaids[0] ? bearingDeg(origin, navaids[0]) : null, distanceNm: navaids[0] ? distanceNm(origin, navaids[0]) : null},
+    },
     waypoints,
     route,
     routePath,
     routeDistanceNm,
   };
+}
+
+function parseKmlProfiles() {
+  const dataDir = path.join(__dirname, 'data');
+  if (!fs.existsSync(dataDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(dataDir)
+    .filter((file) => file.toLowerCase().endsWith('.kml'))
+    .sort((a, b) => a.localeCompare(b))
+    .map((file) => {
+      const navigation = parseKmlFile(dataDir, file);
+      return navigation ? {id: file, name: navigation.navLabel, navigation} : null;
+    })
+    .filter(Boolean);
 }
 
 const fallbackNavigationState = {
@@ -166,9 +194,10 @@ const fallbackNavigationState = {
   distanceNm: 1.0,
   wind: {direction: 0, speed: 0},
   radios: {
-    vor1: {frequency: '110.90', distanceNm: 0.38},
-    vor2: {frequency: '115.15', distanceNm: null},
+    vor1: {name: '---', bearing: null, distanceNm: 0.38},
+    vor2: {name: '---', bearing: null, distanceNm: null},
   },
+  navaids: [],
   waypoints: [
     {id: 'R24SN', bearing: 346, distanceNm: 15.4, kind: 'fix'},
     {id: 'J3POY', bearing: 350, distanceNm: 13.2, kind: 'fix'},
@@ -184,16 +213,35 @@ const fallbackNavigationState = {
   route: ['R24SN', 'J3POY', '87POY', '49POY', '31PT', 'YP024', '10TNQ'],
 };
 
-const navigationState = {
-  ...fallbackNavigationState,
-  ...(parseKmlFiles() || {}),
-};
+let activeProfileId = null;
+const navigationState = structuredClone(fallbackNavigationState);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/navigation', (req, res) => {
+  const kmlProfiles = parseKmlProfiles();
+  const requestedProfileId = req.query.profile || activeProfileId || kmlProfiles[0]?.id;
+  const profile = kmlProfiles.find((nextProfile) => nextProfile.id === requestedProfileId);
+  if (profile) {
+    activeProfileId = profile.id;
+    Object.assign(navigationState, structuredClone(fallbackNavigationState), structuredClone(profile.navigation));
+  } else {
+    Object.assign(navigationState, structuredClone(fallbackNavigationState));
+  }
   res.json(navigationState);
+});
+
+app.get('/api/profiles', (req, res) => {
+  const kmlProfiles = parseKmlProfiles();
+  if (!kmlProfiles.some((profile) => profile.id === activeProfileId)) {
+    activeProfileId = kmlProfiles[0]?.id || null;
+  }
+
+  res.json({
+    activeProfileId,
+    profiles: kmlProfiles.map((profile) => ({id: profile.id, name: profile.name})),
+  });
 });
 
 app.post('/api/navigation', (req, res) => {

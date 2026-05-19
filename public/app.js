@@ -16,6 +16,9 @@ const ARC_HALF_SWEEP = ARC_SWEEP_DEG / 2;
 const FONT = '"Roboto Mono", "Consolas", "Lucida Console", monospace';
 const METERS_PER_NM = 1852;
 
+const DEBUG_CANVAS_COORDS = true;
+const DEBUG_INVERTED_NAVAID = true;
+
 const fallbackState = {
   callsign: 'JX801',
   navLabel: 'ILS05L',
@@ -35,9 +38,10 @@ const fallbackState = {
   distanceNm: 1,
   wind: {direction: 0, speed: 0},
   radios: {
-    vor1: {frequency: '110.90', distanceNm: 0.38},
-    vor2: {frequency: '115.15', distanceNm: null},
+    vor1: {name: '---', bearing: null, distanceNm: 0.38},
+    vor2: {name: '---', bearing: null, distanceNm: null},
   },
+  navaids: [],
   waypoints: [
     {id: 'R24SN', bearing: 346, distanceNm: 15.4, kind: 'fix'},
     {id: 'J3POY', bearing: 350, distanceNm: 13.2, kind: 'fix'},
@@ -70,12 +74,17 @@ const els = {
   nextDistance: document.getElementById('nextDistanceReadout'),
   distanceUnit: document.getElementById('distanceUnitReadout'),
   eta: document.getElementById('etaReadout'),
-  vor1Freq: document.getElementById('vor1Freq'),
-  vor1Dist: document.getElementById('vor1Dist'),
-  vor2Freq: document.getElementById('vor2Freq'),
-  vor2Dist: document.getElementById('vor2Dist'),
+  vor1Name: document.getElementById('vor1Name'),
+  vor1DistValue: document.getElementById('vor1DistValue'),
+  vor1DistUnit: document.getElementById('vor1DistUnit'),
+  vor2Name: document.getElementById('vor2Name'),
+  vor2DistValue: document.getElementById('vor2DistValue'),
+  vor2DistUnit: document.getElementById('vor2DistUnit'),
   trafficStatus: document.getElementById('trafficStatus'),
   trafficControl: document.getElementById('trafficControl'),
+  controlsPanel: document.querySelector('.controls'),
+  controlsToggle: document.getElementById('controlsToggle'),
+  profile: document.getElementById('profileControl'),
   range: document.getElementById('rangeControl'),
   unit: document.getElementById('unitControl'),
   headingControl: document.getElementById('headingControl'),
@@ -220,7 +229,22 @@ function nmText(value) {
   }
   const displayValue = distanceValue(Number(value));
   const decimals = useMeters() ? 0 : displayValue < 10 ? 2 : 0;
-  return `${displayValue.toFixed(decimals)}${distanceUnitText()}`;
+  return `${displayValue.toFixed(decimals)} ${distanceUnitText()}`;
+}
+
+function distanceParts(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return {value: '---', unit: distanceUnitText()};
+  }
+  const displayValue = distanceValue(Number(value));
+  const decimals = useMeters() ? 0 : displayValue < 10 ? 2 : 0;
+  return {value: displayValue.toFixed(decimals), unit: distanceUnitText()};
+}
+
+function syncRadioDistance(valueEl, unitEl, distanceNm) {
+  const parts = distanceParts(distanceNm);
+  valueEl.textContent = parts.value;
+  unitEl.textContent = parts.unit;
 }
 
 function rangeLabel(value) {
@@ -247,6 +271,7 @@ function mergeNavigation(nextState) {
   state.radios = {...fallbackState.radios, ...(nextState.radios || {})};
   state.wind = {...fallbackState.wind, ...(nextState.wind || {})};
   state.waypoints = nextState.waypoints || state.waypoints;
+  state.navaids = nextState.navaids || state.navaids || [];
   state.route = nextState.route || state.route;
   state.routePath = nextState.routePath || state.routePath || [];
   els.range.value = String(state.rangeNm);
@@ -261,13 +286,34 @@ function mergeNavigation(nextState) {
   els.windDirectionReadout.textContent = `${headingText(state.wind.direction)}°`;
   syncPositionControls();
   recomputeNavigationFromPosition();
+  recomputeNavaidsFromPosition();
   applyWindCorrection();
   updateModeButtons();
 }
 
-async function loadNavigation() {
+async function loadProfiles() {
   try {
-    const response = await fetch('/api/navigation');
+    const response = await fetch('/api/profiles');
+    if (!response.ok) return;
+    const {activeProfileId, profiles} = await response.json();
+    els.profile.innerHTML = '';
+    profiles.forEach((profile) => {
+      const option = document.createElement('option');
+      option.value = profile.id;
+      option.textContent = profile.name || profile.id;
+      option.selected = profile.id === activeProfileId;
+      els.profile.append(option);
+    });
+    els.profile.disabled = profiles.length === 0;
+  } catch (error) {
+    console.warn('Unable to load KML profiles', error);
+    els.profile.disabled = true;
+  }
+}
+
+async function loadNavigation(profileId = '') {
+  try {
+    const response = await fetch(profileId ? `/api/navigation?profile=${encodeURIComponent(profileId)}` : '/api/navigation');
     if (!response.ok) return;
     mergeNavigation(await response.json());
   } catch (error) {
@@ -286,10 +332,10 @@ function syncReadouts() {
   els.nextDistance.textContent = Math.round(distanceValue(Number(state.distanceNm)));
   els.distanceUnit.textContent = distanceUnitText();
   els.eta.textContent = etaText(state.distanceNm, state.groundSpeed);
-  els.vor1Freq.textContent = state.radios.vor1.frequency;
-  els.vor1Dist.textContent = nmText(state.radios.vor1.distanceNm);
-  els.vor2Freq.textContent = state.radios.vor2.frequency;
-  els.vor2Dist.textContent = nmText(state.radios.vor2.distanceNm);
+  els.vor1Name.textContent = state.radios.vor1.name || '---';
+  syncRadioDistance(els.vor1DistValue, els.vor1DistUnit, state.radios.vor1.distanceNm);
+  els.vor2Name.textContent = state.radios.vor2.name || '---';
+  syncRadioDistance(els.vor2DistValue, els.vor2DistUnit, state.radios.vor2.distanceNm);
   els.trafficStatus.textContent = state.trafficMode;
   els.trafficStatus.hidden = state.trafficMode === 'HIDDEN';
 }
@@ -342,6 +388,7 @@ function setRouteProgress(ratio) {
   state.currentPosition = positionAtProgress(clampedRatio);
   syncPositionControls();
   recomputeNavigationFromPosition();
+  recomputeNavaidsFromPosition();
 
   if (clampedRatio >= 1) {
     simulationPlaying = false;
@@ -388,6 +435,24 @@ function recomputeNavigationFromPosition({updateHeading = true} = {}) {
   }
 }
 
+function recomputeNavaidsFromPosition() {
+  const ownship = state.currentPosition;
+  if (!ownship || !Array.isArray(state.navaids)) return;
+
+  state.navaids = state.navaids.map((navaid) => ({
+    ...navaid,
+    bearing: bearingBetween(ownship, navaid),
+    distanceNm: distanceNmBetween(ownship, navaid),
+  }));
+
+  const [trackedNavaid] = [...state.navaids].sort((a, b) => a.distanceNm - b.distanceNm);
+  state.radios = {
+    ...state.radios,
+    vor1: {name: trackedNavaid?.id || '---', bearing: trackedNavaid?.bearing ?? null, distanceNm: trackedNavaid?.distanceNm ?? null},
+    vor2: {name: trackedNavaid?.id || '---', bearing: trackedNavaid?.bearing ?? null, distanceNm: trackedNavaid?.distanceNm ?? null},
+  };
+}
+
 function stopLocationWatch() {
   if (locationWatchId !== null) {
     navigator.geolocation.clearWatch(locationWatchId);
@@ -422,6 +487,7 @@ function applyBrowserPosition(position) {
   els.play.textContent = 'Play';
   syncPositionControls();
   recomputeNavigationFromPosition({updateHeading: false});
+  recomputeNavaidsFromPosition();
 
   if (useFakeHeading) {
     state.heading = fakeHeading;
@@ -489,6 +555,63 @@ function updateModeButtons() {
   });
 }
 
+function canvasCoordinatesFromEvent(event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+    y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+  };
+}
+
+function localPointFromCanvasPoint(point, transform) {
+  const dx = point.x - transform.x;
+  const dy = point.y - transform.y;
+  const cos = Math.cos(transform.radians);
+  const sin = Math.sin(transform.radians);
+  return {
+    x: dx * cos + dy * sin,
+    y: -dx * sin + dy * cos,
+  };
+}
+
+function roundPoint(point) {
+  return {
+    x: Number(point.x.toFixed(1)),
+    y: Number(point.y.toFixed(1)),
+  };
+}
+
+function enableCanvasCoordinateDebug() {
+  if (!DEBUG_CANVAS_COORDS) return;
+
+  canvas.addEventListener('click', (event) => {
+    const point = canvasCoordinatesFromEvent(event);
+    const view = layout();
+    const vor1Transform = vorPointerTransform(view, state.radios.vor1, 'vor1');
+    const vor2Transform = vorPointerTransform(view, state.radios.vor2, 'vor2');
+    console.log('canvas coords', {
+      x: Number(point.x.toFixed(1)),
+      y: Number(point.y.toFixed(1)),
+      fromCenterX: Number((point.x - view.cx).toFixed(1)),
+      fromCenterY: Number((point.y - view.cy).toFixed(1)),
+      mode: state.mode,
+      centerX: Number(view.cx.toFixed(1)),
+      centerY: Number(view.cy.toFixed(1)),
+      arcRadius: Number(view.arcRadius.toFixed(1)),
+      vor1Local: vor1Transform ? {
+        kind: vor1Transform.symbolKind,
+        origin: roundPoint(vor1Transform),
+        point: roundPoint(localPointFromCanvasPoint(point, vor1Transform)),
+      } : null,
+      vor2Local: vor2Transform ? {
+        kind: vor2Transform.symbolKind,
+        origin: roundPoint(vor2Transform),
+        point: roundPoint(localPointFromCanvasPoint(point, vor2Transform)),
+      } : null,
+    });
+  });
+}
+
 function layout() {
   const w = canvas.width;
   const h = canvas.height;
@@ -530,7 +653,7 @@ function routePointToScreen(point, view) {
   if (!state.currentPosition) return null;
 
   return toScreen({
-    bearing: courseAdjustedBearing(bearingBetween(state.currentPosition, point)),
+    bearing: bearingBetween(state.currentPosition, point),
     distanceNm: distanceNmBetween(state.currentPosition, point),
   }, view);
 }
@@ -726,7 +849,7 @@ function drawWaypoints(view) {
   ctx.save();
   clipToAzimuth(view);
   state.waypoints.forEach((wp) => {
-    const screen = toScreen({...wp, bearing: courseAdjustedBearing(wp.bearing)}, view);
+    const screen = toScreen(wp, view);
     if (!screen.visible) return;
 
     const active = wp.id === state.nextWaypoint || wp.kind === 'active';
@@ -739,6 +862,184 @@ function drawWaypoints(view) {
     ctx.textBaseline = 'middle';
     ctx.fillText(wp.id, screen.x + 11, screen.y - 2);
   });
+  ctx.restore();
+}
+
+function drawNavaidSymbol(x, y, color = colors.cyan) {
+  const radius = 7;
+  const arm = 14;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - arm, y);
+  ctx.lineTo(x - radius, y);
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + arm, y);
+  ctx.moveTo(x, y - arm);
+  ctx.lineTo(x, y - radius);
+  ctx.moveTo(x, y + radius);
+  ctx.lineTo(x, y + arm);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawNavaidLabel(label, x, y, color = colors.cyan) {
+  ctx.fillStyle = color;
+  ctx.font = `700 22px ${FONT}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(label, x + 11, y + 8);
+}
+
+function drawNavaids(view) {
+  if (!state.navaids?.length) return;
+
+  ctx.save();
+  clipToAzimuth(view);
+  state.navaids.forEach((navaid) => {
+    const screen = toScreen(navaid, view);
+    if (!screen.visible) return;
+
+    drawNavaidSymbol(screen.x, screen.y);
+    drawNavaidLabel(navaid.id, screen.x, screen.y);
+  });
+  ctx.restore();
+}
+
+function drawInvertedTrackedNavaid(view) {
+  if (!DEBUG_INVERTED_NAVAID) return;
+
+  const tracked = state.radios.vor1;
+  if (!Number.isFinite(tracked?.bearing) || !Number.isFinite(tracked?.distanceNm)) return;
+
+  const invertedNavaid = {
+    id: `${tracked.name || 'VOR'} 180`,
+    bearing: normalizeDegrees(tracked.bearing + 180),
+    distanceNm: tracked.distanceNm,
+  };
+  const screen = toScreen(invertedNavaid, view);
+  if (!screen.visible) return;
+
+  ctx.save();
+  clipToAzimuth(view);
+  drawNavaidSymbol(screen.x, screen.y, colors.magenta);
+  drawNavaidLabel(invertedNavaid.id, screen.x, screen.y, colors.magenta);
+  ctx.restore();
+}
+
+function drawVorPointerSymbol(kind) {
+  ctx.strokeStyle = colors.white;
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'miter';
+  ctx.lineCap = 'butt';
+
+  if (kind === 'vor1-inward') {
+    ctx.beginPath();
+    ctx.moveTo(0, -20);
+    ctx.lineTo(0, 25);
+    ctx.lineTo(15, 25);
+    ctx.lineTo(0, 50);
+    ctx.lineTo(0, 145);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -20);
+    ctx.lineTo(0, 25);
+    ctx.lineTo(-15, 25);
+    ctx.lineTo(0, 50);
+    ctx.lineTo(0, 145);
+    ctx.stroke();
+    return;
+  }
+
+  if (kind === 'vor2-inward') {
+    ctx.beginPath();
+    ctx.moveTo(0, -20);
+    ctx.lineTo(0, 40);
+    ctx.lineTo(15, 40);
+    ctx.lineTo(15, 118);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -20);
+    ctx.lineTo(0, 40);
+    ctx.lineTo(-15, 40);
+    ctx.lineTo(-15, 118);
+    ctx.stroke();
+    return;
+  }
+
+  if (kind === 'vor1-outward') {
+    ctx.beginPath();
+    ctx.moveTo(0, -50);
+    ctx.lineTo(0, 10);
+    ctx.lineTo(15, 40);
+    ctx.lineTo(0, 40);
+    ctx.lineTo(0, 142);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -50);
+    ctx.lineTo(0, 10);
+    ctx.lineTo(-15, 40);
+    ctx.lineTo(0, 40);
+    ctx.lineTo(0, 142);
+    ctx.stroke();
+    return;
+  }
+
+  if (kind === 'vor2-outward') {
+    ctx.beginPath();
+    ctx.moveTo(0, -50);
+    ctx.lineTo(0, 30);
+    ctx.lineTo(-20, 65);
+    ctx.lineTo(-10, 65);
+    ctx.lineTo(-10, 118);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -50);
+    ctx.lineTo(0, 30);
+    ctx.lineTo(20, 65);
+    ctx.lineTo(10, 65);
+    ctx.lineTo(10, 118);
+    ctx.stroke();
+    return;
+  }
+}
+
+function vorPointerTransform(view, radio, vorId) {
+  if (!Number.isFinite(radio?.bearing)) return;
+
+  const displayHeading = state.mode === 'PLAN' ? 0 : state.heading;
+  const delta = bearingDelta(radio.bearing, displayHeading);
+  const outsideArc = state.mode === 'ARC' && Math.abs(delta) > ARC_HALF_SWEEP;
+  const radius = view.arcRadius * 1;
+  const tailOffset = vorId === 'vor1' ? 20 : 48;
+  const pointsOutward = !outsideArc && Math.abs(delta) <= 72;
+  const symbolKind = `${vorId}-${pointsOutward ? 'outward' : 'inward'}`;
+  const symbolDelta = pointsOutward ? delta : bearingDelta(normalizeDegrees(radio.bearing + 180), displayHeading);
+  const radians = (symbolDelta * Math.PI) / 180;
+  const symbolRadius = radius - tailOffset;
+  const x = view.cx + Math.sin(radians) * symbolRadius;
+  const y = view.cy - Math.cos(radians) * symbolRadius;
+  return {x, y, radians, symbolKind, outsideArc, delta, symbolDelta};
+}
+
+function drawVorPointer(view, radio, vorId) {
+  const transform = vorPointerTransform(view, radio, vorId);
+  if (!transform) return;
+
+  ctx.save();
+  ctx.translate(transform.x, transform.y);
+  ctx.rotate(transform.radians);
+  drawVorPointerSymbol(transform.symbolKind);
+  ctx.restore();
+}
+
+function drawVorPointers(view) {
+  ctx.save();
+  clipToAzimuth(view);
+  drawVorPointer(view, state.radios.vor1, 'vor1');
+  drawVorPointer(view, state.radios.vor2, 'vor2');
   ctx.restore();
 }
 
@@ -768,7 +1069,6 @@ function drawCourseDetails(view) {
 
   ctx.fillStyle = colors.white;
   ctx.textAlign = 'left';
-  ctx.fillText(`${state.mode} ${state.source}`, 28, view.h - 96);
 
   ctx.restore();
 }
@@ -798,6 +1098,9 @@ function draw() {
   drawCourseDetails(view);
   drawRoute(view);
   drawWaypoints(view);
+  drawNavaids(view);
+  //drawInvertedTrackedNavaid(view);
+  drawVorPointers(view);
   drawOwnship(view);
   syncReadouts();
 }
@@ -819,6 +1122,21 @@ function tick(time) {
 
 els.range.addEventListener('change', (event) => {
   state.rangeNm = Number(event.target.value);
+});
+
+els.profile.addEventListener('change', async (event) => {
+  stopLocationWatch();
+  simulationPlaying = false;
+  els.play.textContent = 'Play';
+  await loadNavigation(event.target.value);
+  baselineState = structuredClone(state);
+  debugLog(`KML profile switched to ${event.target.value}`);
+});
+
+els.controlsToggle.addEventListener('click', () => {
+  const collapsed = els.controlsPanel.classList.toggle('collapsed');
+  els.controlsToggle.textContent = collapsed ? 'Show' : 'Hide';
+  els.controlsToggle.setAttribute('aria-expanded', String(!collapsed));
 });
 
 els.unit.addEventListener('change', () => {
@@ -847,6 +1165,7 @@ function updateManualPosition() {
   };
   syncPositionControls();
   recomputeNavigationFromPosition();
+  recomputeNavaidsFromPosition();
 }
 
 els.latitudeControl.addEventListener('change', updateManualPosition);
@@ -914,7 +1233,10 @@ els.recenter.addEventListener('click', () => {
   els.play.textContent = 'Play';
 });
 
-loadNavigation().finally(() => {
+// Comment out this line to disable click-to-log canvas coordinates.
+enableCanvasCoordinateDebug();
+
+loadProfiles().then(() => loadNavigation()).finally(() => {
   baselineState = structuredClone(state);
   updateModeButtons();
   requestAnimationFrame(tick);
