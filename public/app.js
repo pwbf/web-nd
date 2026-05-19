@@ -15,6 +15,7 @@ const ARC_SWEEP_DEG = 142;
 const ARC_HALF_SWEEP = ARC_SWEEP_DEG / 2;
 const FONT = '"Roboto Mono", "Consolas", "Lucida Console", monospace';
 const METERS_PER_NM = 1852;
+const GPS_HEADING_MIN_SPEED_MPS = 2;
 
 const DEBUG_CANVAS_COORDS = true;
 const DEBUG_INVERTED_NAVAID = true;
@@ -63,6 +64,7 @@ let lastTime = performance.now();
 let baselineState = structuredClone(fallbackState);
 let locationWatchId = null;
 let previousGpsPosition = null;
+let previousGpsTimestamp = null;
 
 const els = {
   gs: document.getElementById('gsReadout'),
@@ -458,6 +460,7 @@ function stopLocationWatch() {
     navigator.geolocation.clearWatch(locationWatchId);
     locationWatchId = null;
     previousGpsPosition = null;
+    previousGpsTimestamp = null;
     debugLog('GPS watch stopped');
   }
   els.location.textContent = 'Use GPS';
@@ -470,7 +473,11 @@ function applyBrowserPosition(position) {
   const {latitude, longitude, altitude, accuracy, altitudeAccuracy, heading, speed} = position.coords;
   const gpsPosition = {lat: latitude, lon: longitude};
   const movementDistanceM = previousGpsPosition ? distanceNmBetween(previousGpsPosition, gpsPosition) * METERS_PER_NM : 0;
-  const fakeHeading = previousGpsPosition && movementDistanceM >= 1
+  const movementSeconds = previousGpsTimestamp ? Math.max(0, (position.timestamp - previousGpsTimestamp) / 1000) : 0;
+  const movementSpeed = movementSeconds > 0 ? movementDistanceM / movementSeconds : null;
+  const headingSpeed = Number.isFinite(speed) ? speed : movementSpeed;
+  const headingReliable = Number.isFinite(headingSpeed) && headingSpeed >= GPS_HEADING_MIN_SPEED_MPS;
+  const fakeHeading = headingReliable && previousGpsPosition
     ? bearingBetween(previousGpsPosition, gpsPosition)
     : null;
   const useFakeHeading = els.fakeHeading.checked && Number.isFinite(fakeHeading);
@@ -492,7 +499,7 @@ function applyBrowserPosition(position) {
   if (useFakeHeading) {
     state.heading = fakeHeading;
     syncHeadingControl();
-  } else if (Number.isFinite(heading)) {
+  } else if (headingReliable && Number.isFinite(heading)) {
     state.heading = normalizeDegrees(heading);
     syncHeadingControl();
   }
@@ -512,6 +519,8 @@ function applyBrowserPosition(position) {
     `fakeHeading=${debugValue(fakeHeading, (value) => `${value.toFixed(1)}deg`)} ` +
     `fakeHeadingMode=${els.fakeHeading.checked ? 'on' : 'off'} ` +
     `vector=${movementDistanceM.toFixed(1)}m ` +
+    `vectorSpeed=${debugValue(movementSpeed, (value) => `${value.toFixed(2)}m/s`)} ` +
+    `headingReliable=${headingReliable ? 'yes' : 'no'} ` +
     `speed=${debugValue(speed, (value) => `${value.toFixed(2)}m/s`)} ` +
     `speedNm=${debugValue(speed, (value) => `${metersPerSecondToNmPerHour(value).toFixed(1)}NM/H`)} ` +
     `alt=${debugValue(altitude, (value) => `${value.toFixed(1)}m`)} ` +
@@ -519,6 +528,7 @@ function applyBrowserPosition(position) {
     `browserTs=${new Date(position.timestamp).toLocaleTimeString()}`
   );
   previousGpsPosition = gpsPosition;
+  previousGpsTimestamp = position.timestamp;
 }
 
 function handleLocationError(error) {
@@ -536,6 +546,7 @@ function startLocationWatch() {
 
   els.location.textContent = 'GPS...';
   previousGpsPosition = null;
+  previousGpsTimestamp = null;
   debugLog('GPS permission requested');
   locationWatchId = navigator.geolocation.watchPosition(applyBrowserPosition, handleLocationError, {
     enableHighAccuracy: true,
