@@ -11,11 +11,11 @@ const colors = {
   grey: '#9a9a9a',
 };
 
-const ARC_SWEEP_DEG = 142;
+const ARC_SWEEP_DEG = 180;
 const ARC_HALF_SWEEP = ARC_SWEEP_DEG / 2;
 const FONT = '"Roboto Mono", "Consolas", "Lucida Console", monospace';
 const METERS_PER_NM = 1852;
-const GPS_HEADING_MIN_SPEED_MPS = 2;
+const DEFAULT_GPS_HEADING_MIN_SPEED_MPS = 2;
 
 const DEBUG_CANVAS_COORDS = true;
 const DEBUG_INVERTED_NAVAID = true;
@@ -37,6 +37,7 @@ const fallbackState = {
   nextWaypoint: '87POY',
   eta: '00:00',
   distanceNm: 1,
+  gpsHeadingMinSpeedMps: DEFAULT_GPS_HEADING_MIN_SPEED_MPS,
   wind: {direction: 0, speed: 0},
   radios: {
     vor1: {name: '---', bearing: null, distanceNm: 0.38},
@@ -102,6 +103,8 @@ const els = {
   windSpeedReadout: document.getElementById('windSpeedReadout'),
   windDirectionControl: document.getElementById('windDirectionControl'),
   windDirectionReadout: document.getElementById('windDirectionReadout'),
+  gpsHeadingMinSpeedControl: document.getElementById('gpsHeadingMinSpeedControl'),
+  gpsHeadingMinSpeedReadout: document.getElementById('gpsHeadingMinSpeedReadout'),
   play: document.getElementById('playButton'),
   location: document.getElementById('locationButton'),
   fakeHeading: document.getElementById('fakeHeadingControl'),
@@ -163,6 +166,10 @@ function speedText(valueNmPerHour) {
 
 function speedReadoutValue(valueNmPerHour) {
   return Math.round(useMeters() ? nmPerHourToMetersPerSecond(valueNmPerHour) : valueNmPerHour);
+}
+
+function gpsHeadingMinSpeedText(valueMps) {
+  return `${Number(valueMps).toFixed(1)} m/s`;
 }
 
 function syncRangeOptionLabels() {
@@ -286,6 +293,8 @@ function mergeNavigation(nextState) {
   els.windSpeedReadout.textContent = speedText(state.wind.speed);
   els.windDirectionControl.value = String(Math.round(state.wind.direction));
   els.windDirectionReadout.textContent = `${headingText(state.wind.direction)}°`;
+  els.gpsHeadingMinSpeedControl.value = String(state.gpsHeadingMinSpeedMps);
+  els.gpsHeadingMinSpeedReadout.textContent = gpsHeadingMinSpeedText(state.gpsHeadingMinSpeedMps);
   syncPositionControls();
   recomputeNavigationFromPosition();
   recomputeNavaidsFromPosition();
@@ -476,7 +485,7 @@ function applyBrowserPosition(position) {
   const movementSeconds = previousGpsTimestamp ? Math.max(0, (position.timestamp - previousGpsTimestamp) / 1000) : 0;
   const movementSpeed = movementSeconds > 0 ? movementDistanceM / movementSeconds : null;
   const headingSpeed = Number.isFinite(speed) ? speed : movementSpeed;
-  const headingReliable = Number.isFinite(headingSpeed) && headingSpeed >= GPS_HEADING_MIN_SPEED_MPS;
+  const headingReliable = Number.isFinite(headingSpeed) && headingSpeed >= state.gpsHeadingMinSpeedMps;
   const fakeHeading = headingReliable && previousGpsPosition
     ? bearingBetween(previousGpsPosition, gpsPosition)
     : null;
@@ -520,6 +529,7 @@ function applyBrowserPosition(position) {
     `fakeHeadingMode=${els.fakeHeading.checked ? 'on' : 'off'} ` +
     `vector=${movementDistanceM.toFixed(1)}m ` +
     `vectorSpeed=${debugValue(movementSpeed, (value) => `${value.toFixed(2)}m/s`)} ` +
+    `minHeadingSpeed=${state.gpsHeadingMinSpeedMps.toFixed(1)}m/s ` +
     `headingReliable=${headingReliable ? 'yes' : 'no'} ` +
     `speed=${debugValue(speed, (value) => `${value.toFixed(2)}m/s`)} ` +
     `speedNm=${debugValue(speed, (value) => `${metersPerSecondToNmPerHour(value).toFixed(1)}NM/H`)} ` +
@@ -1206,6 +1216,11 @@ els.windDirectionControl.addEventListener('input', (event) => {
   state.wind.direction = Number(event.target.value);
   els.windDirectionReadout.textContent = `${headingText(state.wind.direction)}°`;
   applyWindCorrection();
+});
+
+els.gpsHeadingMinSpeedControl.addEventListener('input', (event) => {
+  state.gpsHeadingMinSpeedMps = Number(event.target.value);
+  els.gpsHeadingMinSpeedReadout.textContent = gpsHeadingMinSpeedText(state.gpsHeadingMinSpeedMps);
 });
 
 els.trafficControl.addEventListener('change', (event) => {

@@ -137,6 +137,11 @@
           <input id="fakeHeadingControl" type="checkbox" />
           <span>Fake Heading</span>
         </label>
+        <div class="control-row">
+          <label for="gpsHeadingMinSpeedControl">GPS Heading Min Speed</label>
+          <input id="gpsHeadingMinSpeedControl" type="range" min="0" max="5" step="0.2" value="2" />
+          <output id="gpsHeadingMinSpeedReadout" for="gpsHeadingMinSpeedControl">2.0 m/s</output>
+        </div>
         <details class="debug-panel">
           <summary>Debug</summary>
           <pre id="debugLog" class="debug-log" aria-live="polite"></pre>
