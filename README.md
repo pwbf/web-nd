@@ -1,54 +1,144 @@
-# Navigation Display (ND)
+# WebND Project
 
-Airbus-inspired Navigation Display web UI built with Node.js, HTML, CSS, and JavaScript. The current version is a workable simulator display with range, heading, mode controls, route legs, waypoint symbols, VOR readouts, ETA, distance, and a simple API surface for future navigation-data pipeline work.
+WebND is a browser-based tactical Navigation Display inspired by Airbus-style cockpit ND symbology. It is built with Node.js, HTML, CSS, and JavaScript, and is intended as a practical simulation interface for route tracking, GPS experimentation, and future navigation API integration.
 
-## API shape
+The display is pilot-centric and forward-looking. It supports ARC, ROSE, and PLAN-style modes, range rings, route rendering, waypoint symbols, wind correction, TAS/GS simulation, GPS position input, visible navaid and airport overlays, and compact tables for visible map objects.
 
-The UI loads navigation data from:
+## Features
+
+- Airbus-inspired Navigation Display rendered on HTML canvas
+- ARC-mode half-circle compass and range ring presentation
+- KML route profile loading from `data/*.kml`
+- Manual latitude/longitude input
+- Browser GPS support with temporary `GPS PRIMARY` annunciation
+- Route progress slider and play/pause simulation
+- TAS, wind speed, and wind direction controls
+- Ground speed and track calculation from aircraft vector plus wind vector
+- Navaid rendering from CSV data with selectable VOR, DME, TACAN, NDB, and Other layers
+- Airport rendering from CSV data with selectable airport layer
+- Visible navaid and airport tables with distance, position, and metadata
+- Unit display support for NM, km, and meters
+- Docker and Docker Compose support
+
+## Data Sources
+
+Navaid and airport CSV data are sourced from OurAirports:
+
+https://ourairports.com/
+
+Files used by this project:
+
+- `data/navaids.csv`
+- `data/airports.csv`
+
+Please review OurAirports licensing and attribution requirements before redistributing datasets or derived data.
+
+## Project Structure
+
+```text
+.
+├── data/
+│   ├── airports.csv
+│   ├── navaids.csv
+│   └── *.kml
+├── public/
+│   ├── app.js
+│   ├── index.html
+│   └── styles.css
+├── server.js
+├── Dockerfile
+├── docker-compose.yml
+└── compose.yml
+```
+
+## API
+
+Load navigation state:
 
 ```bash
 GET /api/navigation
 ```
 
-You can push replacement state for experiments with:
+Load a specific KML profile:
+
+```bash
+GET /api/navigation?profile=PROFILE_FILE.kml
+```
+
+List available profiles:
+
+```bash
+GET /api/profiles
+```
+
+Push replacement navigation state for experiments:
 
 ```bash
 POST /api/navigation
 Content-Type: application/json
 ```
 
-This is intentionally small so a future Google Maps Navigation API adapter can translate route steps into `waypoints`, `route`, `heading`, `distanceNm`, and `eta`.
+The API is intentionally small so a future adapter can translate navigation sources, such as Google Maps navigation data, into route points, waypoints, aircraft position, heading, distance, and ETA.
 
-## Run locally
+## Run Locally
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Start the server:
-   ```bash
-   npm start
-   ```
-3. Open `https://localhost:8500`
+Install dependencies:
 
-The server expects a local self-signed certificate at `cert/server.crt` and key at `cert/server.key`. You can override those paths with `HTTPS_CERT_PATH` and `HTTPS_KEY_PATH`.
+```bash
+npm install
+```
 
-## Run with Docker
+Start the HTTPS server:
+
+```bash
+npm start
+```
+
+Open:
+
+```text
+https://localhost:8500
+```
+
+The server expects a local certificate and key at:
+
+```text
+cert/server.crt
+cert/server.key
+```
+
+You can override those paths with:
+
+```bash
+HTTPS_CERT_PATH=/path/to/server.crt HTTPS_KEY_PATH=/path/to/server.key npm start
+```
+
+## Run With Docker
 
 Build the image:
+
 ```bash
-docker build -t nd-webui .
+docker build -t webnd .
 ```
 
 Run the container:
+
 ```bash
-docker run --rm -p 8500:8500 nd-webui
+docker run --rm -p 8500:8500 webnd
 ```
 
-Then open `https://localhost:8500`.
+Open:
+
+```text
+https://localhost:8500
+```
 
 Or use Docker Compose:
 
 ```bash
 docker compose up --build
 ```
+
+## Notes
+
+This project is a simulation and visualization tool. It is not certified avionics software and must not be used for real-world flight navigation.

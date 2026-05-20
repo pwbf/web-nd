@@ -16,6 +16,7 @@ const ARC_HALF_SWEEP = ARC_SWEEP_DEG / 2;
 const FONT = '"Roboto Mono", "Consolas", "Lucida Console", monospace';
 const METERS_PER_NM = 1852;
 const DEFAULT_GPS_HEADING_MIN_SPEED_MPS = 2;
+const GPS_PRIMARY_DISPLAY_MS = 60000;
 
 const DEBUG_CANVAS_COORDS = true;
 const DEBUG_INVERTED_NAVAID = true;
@@ -30,13 +31,16 @@ const fallbackState = {
   groundSpeed: 250,
   trueAirSpeed: 250,
   rangeNm: 10,
+  navaidRangeNm: 250,
+  navaidTypeFilters: {vor: false, dme: false, tacan: false, ndb: false, other: false},
+  showAirports: false,
   currentPosition: {lat: 35.765278, lon: 140.385556, altitudeFt: 41, routeDistanceNm: 0},
   routePath: [],
   routeDistanceNm: 0,
   trafficMode: 'HIDDEN',
-  nextWaypoint: '87POY',
+  nextWaypoint: null,
   eta: '00:00',
-  distanceNm: 1,
+  distanceNm: null,
   gpsHeadingMinSpeedMps: DEFAULT_GPS_HEADING_MIN_SPEED_MPS,
   wind: {direction: 0, speed: 0},
   radios: {
@@ -44,19 +48,9 @@ const fallbackState = {
     vor2: {name: '---', bearing: null, distanceNm: null},
   },
   navaids: [],
-  waypoints: [
-    {id: 'R24SN', bearing: 346, distanceNm: 15.4, kind: 'fix'},
-    {id: 'J3POY', bearing: 350, distanceNm: 13.2, kind: 'fix'},
-    {id: '87POY', bearing: 2, distanceNm: 9.7, kind: 'active'},
-    {id: '20TNQ', bearing: 35, distanceNm: 10.6, kind: 'fix'},
-    {id: '35TNQ', bearing: 42, distanceNm: 8.8, kind: 'fix'},
-    {id: '13BT', bearing: 70, distanceNm: 17.4, kind: 'fix'},
-    {id: '49POY', bearing: 318, distanceNm: 5.8, kind: 'fix'},
-    {id: '31PT', bearing: 300, distanceNm: 3.3, kind: 'fix'},
-    {id: 'YP024', bearing: 80, distanceNm: 2.2, kind: 'fix'},
-    {id: '10TNQ', bearing: 118, distanceNm: 5.4, kind: 'fix'},
-  ],
-  route: ['R24SN', 'J3POY', '87POY', '49POY', '31PT', 'YP024', '10TNQ'],
+  airports: [],
+  waypoints: [],
+  route: [],
 };
 
 const state = structuredClone(fallbackState);
@@ -66,6 +60,9 @@ let baselineState = structuredClone(fallbackState);
 let locationWatchId = null;
 let previousGpsPosition = null;
 let previousGpsTimestamp = null;
+let visibleNavaidTableSignature = '';
+let visibleAirportTableSignature = '';
+let gpsPrimaryVisibleUntil = 0;
 
 const els = {
   gs: document.getElementById('gsReadout'),
@@ -83,12 +80,25 @@ const els = {
   vor2Name: document.getElementById('vor2Name'),
   vor2DistValue: document.getElementById('vor2DistValue'),
   vor2DistUnit: document.getElementById('vor2DistUnit'),
+  navaidPanel: document.getElementById('navaidPanel'),
+  visibleNavaidCount: document.getElementById('visibleNavaidCount'),
+  visibleNavaidTableBody: document.getElementById('visibleNavaidTableBody'),
+  airportPanel: document.getElementById('airportPanel'),
+  visibleAirportCount: document.getElementById('visibleAirportCount'),
+  visibleAirportTableBody: document.getElementById('visibleAirportTableBody'),
   trafficStatus: document.getElementById('trafficStatus'),
-  trafficControl: document.getElementById('trafficControl'),
+  copyrightYear: document.getElementById('copyrightYear'),
   controlsPanel: document.querySelector('.controls'),
   controlsToggle: document.getElementById('controlsToggle'),
   profile: document.getElementById('profileControl'),
   range: document.getElementById('rangeControl'),
+  navaidRange: document.getElementById('navaidRangeControl'),
+  showVor: document.getElementById('showVorControl'),
+  showDme: document.getElementById('showDmeControl'),
+  showTacan: document.getElementById('showTacanControl'),
+  showNdb: document.getElementById('showNdbControl'),
+  showOtherNavaid: document.getElementById('showOtherNavaidControl'),
+  showAirports: document.getElementById('showAirportsControl'),
   unit: document.getElementById('unitControl'),
   headingControl: document.getElementById('headingControl'),
   latitudeControl: document.getElementById('latitudeControl'),
@@ -112,6 +122,8 @@ const els = {
   debugLog: document.getElementById('debugLog'),
   modeButtons: document.querySelectorAll('[data-mode]'),
 };
+
+els.copyrightYear.textContent = String(new Date().getFullYear());
 
 function debugValue(value, formatter = (nextValue) => nextValue) {
   return Number.isFinite(value) ? formatter(value) : 'n/a';
@@ -141,6 +153,10 @@ function useMeters() {
   return els.unit.value === 'm';
 }
 
+function useKilometers() {
+  return els.unit.value === 'km';
+}
+
 function metersPerSecondToNmPerHour(value) {
   return (value * 3600) / METERS_PER_NM;
 }
@@ -150,22 +166,76 @@ function nmPerHourToMetersPerSecond(value) {
 }
 
 function distanceValue(valueNm) {
-  return useMeters() ? valueNm * METERS_PER_NM : valueNm;
+  if (useMeters()) return valueNm * METERS_PER_NM;
+  if (useKilometers()) return valueNm * 1.852;
+  return valueNm;
 }
 
 function distanceUnitText() {
-  return useMeters() ? 'm' : 'NM';
+  if (useMeters()) return 'm';
+  if (useKilometers()) return 'km';
+  return 'NM';
 }
 
 function speedText(valueNmPerHour) {
   if (useMeters()) {
     return `${Math.round(nmPerHourToMetersPerSecond(valueNmPerHour))} m/s`;
   }
+  if (useKilometers()) {
+    return `${Math.round(valueNmPerHour * 1.852)} km/h`;
+  }
   return `${Math.round(valueNmPerHour)} NM/H`;
 }
 
 function speedReadoutValue(valueNmPerHour) {
-  return Math.round(useMeters() ? nmPerHourToMetersPerSecond(valueNmPerHour) : valueNmPerHour);
+  if (useMeters()) return Math.round(nmPerHourToMetersPerSecond(valueNmPerHour));
+  if (useKilometers()) return Math.round(valueNmPerHour * 1.852);
+  return Math.round(valueNmPerHour);
+}
+
+function navaidFrequencyText(frequencyKhz) {
+  if (!Number.isFinite(frequencyKhz)) return '---';
+  if (frequencyKhz >= 10000) return `${(frequencyKhz / 1000).toFixed(2)} MHz`;
+  return `${Math.round(frequencyKhz)} kHz`;
+}
+
+function coordinateText(value) {
+  return Number.isFinite(value) ? value.toFixed(5) : '---';
+}
+
+function tableDistanceText(distanceNm) {
+  if (!Number.isFinite(distanceNm)) return '---';
+  const value = distanceValue(distanceNm);
+  const decimals = useMeters() ? 0 : value < 10 ? 1 : 0;
+  return `${value.toFixed(decimals)} ${distanceUnitText()}`;
+}
+
+function navaidType(value) {
+  return String(value || '').toUpperCase();
+}
+
+function isVorNavaid(navaid) {
+  return navaidType(navaid.type).startsWith('VOR');
+}
+
+function isTrackedVorNavaid(navaid) {
+  return isVorNavaid(navaid) && navaid.id === state.radios?.vor1?.name;
+}
+
+function navaidCategory(navaid) {
+  const type = navaidType(navaid.type);
+  if (type.startsWith('VOR')) return 'vor';
+  if (type.startsWith('NDB')) return 'ndb';
+  if (type === 'DME') return 'dme';
+  if (type === 'TACAN') return 'tacan';
+  return 'other';
+}
+
+function navaidTypeIsVisible(navaid) {
+  if (isVorNavaid(navaid)) {
+    return Boolean(state.navaidTypeFilters?.vor) || isTrackedVorNavaid(navaid);
+  }
+  return state.navaidTypeFilters?.[navaidCategory(navaid)] ?? true;
 }
 
 function gpsHeadingMinSpeedText(valueMps) {
@@ -175,7 +245,7 @@ function gpsHeadingMinSpeedText(valueMps) {
 function syncRangeOptionLabels() {
   [...els.range.options].forEach((option) => {
     const valueNm = Number(option.value);
-    option.textContent = useMeters() ? `${Math.round(valueNm * METERS_PER_NM)} m` : `${valueNm} NM`;
+    option.textContent = `${rangeLabel(valueNm)} ${distanceUnitText()}`;
   });
 }
 
@@ -276,16 +346,26 @@ function etaText(distanceNm, groundSpeed) {
 }
 
 function mergeNavigation(nextState) {
-  Object.assign(state, nextState);
+  Object.assign(state, structuredClone(fallbackState), nextState);
   state.radios = {...fallbackState.radios, ...(nextState.radios || {})};
   state.wind = {...fallbackState.wind, ...(nextState.wind || {})};
-  state.waypoints = nextState.waypoints || state.waypoints;
-  state.navaids = nextState.navaids || state.navaids || [];
-  state.route = nextState.route || state.route;
-  state.routePath = nextState.routePath || state.routePath || [];
+  state.navaidTypeFilters = {...fallbackState.navaidTypeFilters, ...(nextState.navaidTypeFilters || state.navaidTypeFilters || {})};
+  state.waypoints = Array.isArray(nextState.waypoints) ? nextState.waypoints : state.waypoints;
+  state.navaids = Array.isArray(nextState.navaids) ? nextState.navaids : state.navaids || [];
+  state.airports = Array.isArray(nextState.airports) ? nextState.airports : state.airports || [];
+  state.route = Array.isArray(nextState.route) ? nextState.route : state.route;
+  state.routePath = Array.isArray(nextState.routePath) ? nextState.routePath : state.routePath || [];
+  visibleNavaidTableSignature = '';
+  visibleAirportTableSignature = '';
   els.range.value = String(state.rangeNm);
+  els.navaidRange.value = String(state.navaidRangeNm);
+  els.showVor.checked = state.navaidTypeFilters.vor;
+  els.showDme.checked = state.navaidTypeFilters.dme;
+  els.showTacan.checked = state.navaidTypeFilters.tacan;
+  els.showNdb.checked = state.navaidTypeFilters.ndb;
+  els.showOtherNavaid.checked = state.navaidTypeFilters.other;
+  els.showAirports.checked = Boolean(state.showAirports);
   syncRangeOptionLabels();
-  els.trafficControl.value = state.trafficMode || 'HIDDEN';
   syncHeadingControl();
   els.trueAirSpeedControl.value = String(Math.round(state.trueAirSpeed));
   els.trueAirSpeedReadout.textContent = speedText(state.trueAirSpeed);
@@ -298,8 +378,21 @@ function mergeNavigation(nextState) {
   syncPositionControls();
   recomputeNavigationFromPosition();
   recomputeNavaidsFromPosition();
+  recomputeAirportsFromPosition();
   applyWindCorrection();
   updateModeButtons();
+}
+
+function clearRouteState() {
+  state.waypoints = [];
+  state.route = [];
+  state.routePath = [];
+  state.routeDistanceNm = 0;
+  state.nextWaypoint = null;
+  state.distanceNm = null;
+  if (state.currentPosition) {
+    state.currentPosition.routeDistanceNm = 0;
+  }
 }
 
 async function loadProfiles() {
@@ -308,6 +401,11 @@ async function loadProfiles() {
     if (!response.ok) return;
     const {activeProfileId, profiles} = await response.json();
     els.profile.innerHTML = '';
+    const noneOption = document.createElement('option');
+    noneOption.value = '';
+    noneOption.textContent = 'None';
+    noneOption.selected = !activeProfileId;
+    els.profile.append(noneOption);
     profiles.forEach((profile) => {
       const option = document.createElement('option');
       option.value = profile.id;
@@ -315,10 +413,11 @@ async function loadProfiles() {
       option.selected = profile.id === activeProfileId;
       els.profile.append(option);
     });
-    els.profile.disabled = profiles.length === 0;
+    els.profile.disabled = false;
   } catch (error) {
     console.warn('Unable to load KML profiles', error);
-    els.profile.disabled = true;
+    els.profile.innerHTML = '<option value="">None</option>';
+    els.profile.disabled = false;
   }
 }
 
@@ -340,15 +439,99 @@ function syncReadouts() {
   els.windArrow.style.transform = `rotate(${bearingDelta(state.wind.direction, state.heading) - 90}deg)`;
   els.windArrow.hidden = Math.round(state.wind.speed) <= 0;
   els.heading.textContent = headingText(state.track);
-  els.nextDistance.textContent = Math.round(distanceValue(Number(state.distanceNm)));
+  els.nextDistance.textContent = Number.isFinite(Number(state.distanceNm)) ? Math.round(distanceValue(Number(state.distanceNm))) : '---';
   els.distanceUnit.textContent = distanceUnitText();
   els.eta.textContent = etaText(state.distanceNm, state.groundSpeed);
   els.vor1Name.textContent = state.radios.vor1.name || '---';
   syncRadioDistance(els.vor1DistValue, els.vor1DistUnit, state.radios.vor1.distanceNm);
   els.vor2Name.textContent = state.radios.vor2.name || '---';
   syncRadioDistance(els.vor2DistValue, els.vor2DistUnit, state.radios.vor2.distanceNm);
-  els.trafficStatus.textContent = state.trafficMode;
-  els.trafficStatus.hidden = state.trafficMode === 'HIDDEN';
+  const gpsPrimaryVisible = performance.now() < gpsPrimaryVisibleUntil;
+  els.trafficStatus.textContent = 'GPS PRIMARY';
+  els.trafficStatus.hidden = !gpsPrimaryVisible;
+}
+
+function visibleNavaidsForView(view) {
+  if (!state.navaids?.length) return [];
+
+  return state.navaids
+    .filter((navaid) => navaid.distanceNm <= state.navaidRangeNm)
+    .filter(navaidTypeIsVisible)
+    .map((navaid) => ({navaid, screen: toScreen(navaid, view)}))
+    .filter(({screen}) => screen.visible)
+    .sort((a, b) => a.navaid.distanceNm - b.navaid.distanceNm);
+}
+
+function visibleAirportsForView(view) {
+  if (!state.showAirports || !state.airports?.length) return [];
+
+  return state.airports
+    .filter((airport) => airport.distanceNm <= state.rangeNm)
+    .map((airport) => ({airport, screen: toScreen(airport, view)}))
+    .filter(({screen}) => screen.visible)
+    .sort((a, b) => a.airport.distanceNm - b.airport.distanceNm);
+}
+
+function syncVisibleNavaidTable(visibleNavaids) {
+  els.visibleNavaidCount.textContent = String(visibleNavaids.length);
+  if (!els.navaidPanel.open) return;
+
+  const tableSignature = visibleNavaids.map(({navaid}) => navaid.id).join('|');
+  if (tableSignature === visibleNavaidTableSignature) return;
+  visibleNavaidTableSignature = tableSignature;
+
+  if (!visibleNavaids.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.textContent = 'No visible navaids';
+    row.append(cell);
+    els.visibleNavaidTableBody.replaceChildren(row);
+    return;
+  }
+
+  const rows = visibleNavaids.map(({navaid}) => {
+    const row = document.createElement('tr');
+    [navaid.id, navaid.type || 'NAVAID', navaidFrequencyText(navaid.frequencyKhz), tableDistanceText(navaid.distanceNm), coordinateText(navaid.lat), coordinateText(navaid.lon)]
+      .forEach((value) => {
+        const cell = document.createElement('td');
+        cell.textContent = value || '---';
+        row.append(cell);
+      });
+    return row;
+  });
+  els.visibleNavaidTableBody.replaceChildren(...rows);
+}
+
+function syncVisibleAirportTable(visibleAirports) {
+  els.visibleAirportCount.textContent = String(visibleAirports.length);
+  if (!els.airportPanel.open) return;
+
+  const tableSignature = visibleAirports.map(({airport}) => airport.id).join('|');
+  if (tableSignature === visibleAirportTableSignature) return;
+  visibleAirportTableSignature = tableSignature;
+
+  if (!visibleAirports.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.textContent = 'No visible airports';
+    row.append(cell);
+    els.visibleAirportTableBody.replaceChildren(row);
+    return;
+  }
+
+  const rows = visibleAirports.map(({airport}) => {
+    const row = document.createElement('tr');
+    [airport.id, airport.type || 'airport', tableDistanceText(airport.distanceNm), coordinateText(airport.lat), coordinateText(airport.lon), `${airport.isoCountry || '---'} / ${airport.municipality || '---'}`]
+      .forEach((value) => {
+        const cell = document.createElement('td');
+        cell.textContent = value || '---';
+        row.append(cell);
+      });
+    return row;
+  });
+  els.visibleAirportTableBody.replaceChildren(...rows);
 }
 
 function syncPositionControls() {
@@ -400,6 +583,7 @@ function setRouteProgress(ratio) {
   syncPositionControls();
   recomputeNavigationFromPosition();
   recomputeNavaidsFromPosition();
+  recomputeAirportsFromPosition();
 
   if (clampedRatio >= 1) {
     simulationPlaying = false;
@@ -419,6 +603,12 @@ function nearestRouteDistance(position) {
 function recomputeNavigationFromPosition({updateHeading = true} = {}) {
   const ownship = state.currentPosition;
   if (!ownship) return;
+  if (!state.waypoints.length) {
+    state.nextWaypoint = null;
+    state.distanceNm = null;
+    applyWindCorrection();
+    return;
+  }
   if (!state.waypoints.every((wp) => Number.isFinite(wp.lat) && Number.isFinite(wp.lon))) return;
 
   const currentRouteDistance = ownship.routeDistanceNm ?? nearestRouteDistance(ownship);
@@ -456,12 +646,23 @@ function recomputeNavaidsFromPosition() {
     distanceNm: distanceNmBetween(ownship, navaid),
   }));
 
-  const [trackedNavaid] = [...state.navaids].sort((a, b) => a.distanceNm - b.distanceNm);
+  const [trackedNavaid] = state.navaids.filter(isVorNavaid).sort((a, b) => a.distanceNm - b.distanceNm);
   state.radios = {
     ...state.radios,
     vor1: {name: trackedNavaid?.id || '---', bearing: trackedNavaid?.bearing ?? null, distanceNm: trackedNavaid?.distanceNm ?? null},
     vor2: {name: trackedNavaid?.id || '---', bearing: trackedNavaid?.bearing ?? null, distanceNm: trackedNavaid?.distanceNm ?? null},
   };
+}
+
+function recomputeAirportsFromPosition() {
+  const ownship = state.currentPosition;
+  if (!ownship || !Array.isArray(state.airports)) return;
+
+  state.airports = state.airports.map((airport) => ({
+    ...airport,
+    bearing: bearingBetween(ownship, airport),
+    distanceNm: distanceNmBetween(ownship, airport),
+  }));
 }
 
 function stopLocationWatch() {
@@ -504,6 +705,7 @@ function applyBrowserPosition(position) {
   syncPositionControls();
   recomputeNavigationFromPosition({updateHeading: false});
   recomputeNavaidsFromPosition();
+  recomputeAirportsFromPosition();
 
   if (useFakeHeading) {
     state.heading = fakeHeading;
@@ -555,6 +757,7 @@ function startLocationWatch() {
   }
 
   els.location.textContent = 'GPS...';
+  gpsPrimaryVisibleUntil = performance.now() + GPS_PRIMARY_DISPLAY_MS;
   previousGpsPosition = null;
   previousGpsTimestamp = null;
   debugLog('GPS permission requested');
@@ -887,8 +1090,8 @@ function drawWaypoints(view) {
 }
 
 function drawNavaidSymbol(x, y, color = colors.cyan) {
-  const radius = 7;
-  const arm = 14;
+  const radius = 5;
+  const arm = 10;
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -906,25 +1109,75 @@ function drawNavaidSymbol(x, y, color = colors.cyan) {
   ctx.stroke();
 }
 
-function drawNavaidLabel(label, x, y, color = colors.cyan) {
-  ctx.fillStyle = color;
-  ctx.font = `700 22px ${FONT}`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(label, x + 11, y + 8);
+function drawNdbSymbol(x, y) {
+  const radius = 5;
+  ctx.strokeStyle = colors.magenta;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y - radius);
+  ctx.lineTo(x + radius, y + radius);
+  ctx.lineTo(x - radius, y + radius);
+  ctx.closePath();
+  ctx.stroke();
 }
 
-function drawNavaids(view) {
-  if (!state.navaids?.length) return;
+function drawNavaidLabel(label, x, y, color = colors.cyan) {
+  ctx.fillStyle = color;
+  ctx.font = `700 18px ${FONT}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + 14, y);
+}
+
+function drawAirportSymbol(x, y) {
+  const radius = 7;
+  ctx.strokeStyle = colors.magenta;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'butt';
+  for (let index = 0; index < 4; index += 1) {
+    const radians = (index * Math.PI) / 4;
+    const dx = Math.cos(radians) * radius;
+    const dy = Math.sin(radians) * radius;
+    ctx.beginPath();
+    ctx.moveTo(x - dx, y - dy);
+    ctx.lineTo(x + dx, y + dy);
+    ctx.stroke();
+  }
+}
+
+function drawAirports(view, visibleAirports) {
+  if (!visibleAirports.length) return;
 
   ctx.save();
   clipToAzimuth(view);
-  state.navaids.forEach((navaid) => {
-    const screen = toScreen(navaid, view);
-    if (!screen.visible) return;
+  visibleAirports.forEach(({airport, screen}) => {
+    drawAirportSymbol(screen.x, screen.y);
+    drawNavaidLabel(airport.id, screen.x, screen.y, colors.magenta);
+  });
+  ctx.restore();
+}
 
-    drawNavaidSymbol(screen.x, screen.y);
-    drawNavaidLabel(navaid.id, screen.x, screen.y);
+function drawNavaids(view, visibleNavaids) {
+  if (!visibleNavaids.length) return;
+
+  ctx.save();
+  clipToAzimuth(view);
+  visibleNavaids.forEach(({navaid, screen}) => {
+    if (isVorNavaid(navaid)) {
+      const color = state.navaidTypeFilters.vor ? colors.magenta : colors.cyan;
+      drawNavaidSymbol(screen.x, screen.y, color);
+      drawNavaidLabel(navaid.id, screen.x, screen.y, color);
+      return;
+    }
+
+    if (navaidCategory(navaid) === 'ndb') {
+      drawNdbSymbol(screen.x, screen.y);
+      drawNavaidLabel(navaid.id, screen.x, screen.y, colors.magenta);
+      return;
+    }
+
+    drawNavaidSymbol(screen.x, screen.y, colors.magenta);
+    drawNavaidLabel(navaid.id, screen.x, screen.y, colors.magenta);
   });
   ctx.restore();
 }
@@ -1112,6 +1365,8 @@ function drawRosePlanOverlay(view) {
 
 function draw() {
   const view = layout();
+  const visibleNavaids = visibleNavaidsForView(view);
+  const visibleAirports = visibleAirportsForView(view);
   drawBackground(view);
   drawRosePlanOverlay(view);
   drawRange(view);
@@ -1119,11 +1374,14 @@ function draw() {
   drawCourseDetails(view);
   drawRoute(view);
   drawWaypoints(view);
-  drawNavaids(view);
+  drawAirports(view, visibleAirports);
+  drawNavaids(view, visibleNavaids);
   //drawInvertedTrackedNavaid(view);
   drawVorPointers(view);
   drawOwnship(view);
   syncReadouts();
+  syncVisibleNavaidTable(visibleNavaids);
+  syncVisibleAirportTable(visibleAirports);
 }
 
 function tick(time) {
@@ -1145,13 +1403,36 @@ els.range.addEventListener('change', (event) => {
   state.rangeNm = Number(event.target.value);
 });
 
+els.navaidRange.addEventListener('change', (event) => {
+  state.navaidRangeNm = Number(event.target.value);
+  visibleNavaidTableSignature = '';
+});
+
+function updateNavaidTypeFilter(key, checked) {
+  state.navaidTypeFilters = {...state.navaidTypeFilters, [key]: checked};
+  visibleNavaidTableSignature = '';
+}
+
+els.showVor.addEventListener('change', (event) => updateNavaidTypeFilter('vor', event.target.checked));
+els.showDme.addEventListener('change', (event) => updateNavaidTypeFilter('dme', event.target.checked));
+els.showTacan.addEventListener('change', (event) => updateNavaidTypeFilter('tacan', event.target.checked));
+els.showNdb.addEventListener('change', (event) => updateNavaidTypeFilter('ndb', event.target.checked));
+els.showOtherNavaid.addEventListener('change', (event) => updateNavaidTypeFilter('other', event.target.checked));
+els.showAirports.addEventListener('change', (event) => {
+  state.showAirports = event.target.checked;
+  visibleAirportTableSignature = '';
+});
+
 els.profile.addEventListener('change', async (event) => {
   stopLocationWatch();
   simulationPlaying = false;
   els.play.textContent = 'Play';
+  if (!event.target.value) {
+    clearRouteState();
+  }
   await loadNavigation(event.target.value);
   baselineState = structuredClone(state);
-  debugLog(`KML profile switched to ${event.target.value}`);
+  debugLog(event.target.value ? `KML profile switched to ${event.target.value}` : 'KML profile cleared');
 });
 
 els.controlsToggle.addEventListener('click', () => {
@@ -1164,6 +1445,8 @@ els.unit.addEventListener('change', () => {
   syncRangeOptionLabels();
   els.trueAirSpeedReadout.textContent = speedText(state.trueAirSpeed);
   els.windSpeedReadout.textContent = speedText(state.wind.speed);
+  visibleNavaidTableSignature = '';
+  visibleAirportTableSignature = '';
   debugLog(`Units changed to ${distanceUnitText()}`);
 });
 
@@ -1187,6 +1470,7 @@ function updateManualPosition() {
   syncPositionControls();
   recomputeNavigationFromPosition();
   recomputeNavaidsFromPosition();
+  recomputeAirportsFromPosition();
 }
 
 els.latitudeControl.addEventListener('change', updateManualPosition);
@@ -1221,10 +1505,6 @@ els.windDirectionControl.addEventListener('input', (event) => {
 els.gpsHeadingMinSpeedControl.addEventListener('input', (event) => {
   state.gpsHeadingMinSpeedMps = Number(event.target.value);
   els.gpsHeadingMinSpeedReadout.textContent = gpsHeadingMinSpeedText(state.gpsHeadingMinSpeedMps);
-});
-
-els.trafficControl.addEventListener('change', (event) => {
-  state.trafficMode = event.target.value;
 });
 
 els.modeButtons.forEach((button) => {

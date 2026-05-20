@@ -6,6 +6,8 @@ const app = express();
 const PORT = process.env.PORT || 8500;
 const HTTPS_CERT_PATH = process.env.HTTPS_CERT_PATH || path.join(__dirname, 'cert', 'server.crt');
 const HTTPS_KEY_PATH = process.env.HTTPS_KEY_PATH || path.join(__dirname, 'cert', 'server.key');
+let navaidCsvCache = {mtimeMs: null, navaids: []};
+let airportCsvCache = {mtimeMs: null, airports: []};
 
 function decodeXml(text) {
   return text
@@ -19,6 +21,109 @@ function decodeXml(text) {
 function parseCoordinate(text) {
   const [lon, lat, altitude = 0] = text.trim().split(',').map(Number);
   return {lat, lon, altitude};
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    const nextCharacter = line[index + 1];
+    if (character === '"' && inQuotes && nextCharacter === '"') {
+      current += '"';
+      index += 1;
+    } else if (character === '"') {
+      inQuotes = !inQuotes;
+    } else if (character === ',' && !inQuotes) {
+      values.push(current);
+      current = '';
+    } else {
+      current += character;
+    }
+  }
+
+  values.push(current);
+  return values;
+}
+
+function parseOptionalNumber(value) {
+  if (value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function loadNavaidsCsv(dataDir) {
+  const csvPath = path.join(dataDir, 'navaids.csv');
+  if (!fs.existsSync(csvPath)) return [];
+
+  const stats = fs.statSync(csvPath);
+  if (navaidCsvCache.mtimeMs === stats.mtimeMs) {
+    return navaidCsvCache.navaids;
+  }
+
+  const [headerLine, ...rows] = fs.readFileSync(csvPath, 'utf8').split(/\r?\n/).filter(Boolean);
+  const headers = parseCsvLine(headerLine).map((header) => header.replace(/^"|"$/g, ''));
+  const navaids = rows.map((row) => {
+    const values = parseCsvLine(row);
+    const record = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']));
+    const lat = parseOptionalNumber(record.latitude_deg);
+    const lon = parseOptionalNumber(record.longitude_deg);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !record.ident) return null;
+
+    return {
+      id: record.ident,
+      name: record.name || record.ident,
+      type: record.type || 'NAVAID',
+      frequencyKhz: parseOptionalNumber(record.frequency_khz),
+      lat,
+      lon,
+      altitudeFt: Math.round(parseOptionalNumber(record.elevation_ft) || 0),
+      isoCountry: record.iso_country || '',
+      associatedAirport: record.associated_airport || '',
+    };
+  }).filter(Boolean);
+
+  navaidCsvCache = {mtimeMs: stats.mtimeMs, navaids};
+  return navaids;
+}
+
+function loadAirportsCsv(dataDir) {
+  const csvPath = path.join(dataDir, 'airports.csv');
+  if (!fs.existsSync(csvPath)) return [];
+
+  const stats = fs.statSync(csvPath);
+  if (airportCsvCache.mtimeMs === stats.mtimeMs) {
+    return airportCsvCache.airports;
+  }
+
+  const [headerLine, ...rows] = fs.readFileSync(csvPath, 'utf8').split(/\r?\n/).filter(Boolean);
+  const headers = parseCsvLine(headerLine).map((header) => header.replace(/^"|"$/g, ''));
+  const airports = rows.map((row) => {
+    const values = parseCsvLine(row);
+    const record = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? '']));
+    const lat = parseOptionalNumber(record.latitude_deg);
+    const lon = parseOptionalNumber(record.longitude_deg);
+    const ident = record.ident || record.icao_code || record.gps_code || record.iata_code;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || !/^[A-Z]{4}$/.test(ident) || !String(record.type || '').endsWith('airport')) return null;
+
+    return {
+      id: ident,
+      name: record.name || ident,
+      type: record.type || 'airport',
+      lat,
+      lon,
+      altitudeFt: Math.round(parseOptionalNumber(record.elevation_ft) || 0),
+      isoCountry: record.iso_country || '',
+      municipality: record.municipality || '',
+      iataCode: record.iata_code || '',
+      icaoCode: record.icao_code || '',
+    };
+  }).filter(Boolean);
+
+  airportCsvCache = {mtimeMs: stats.mtimeMs, airports};
+  return airports;
 }
 
 function distanceNm(from, to) {
@@ -38,6 +143,43 @@ function bearingDeg(from, to) {
   const y = Math.sin(deltaLon) * Math.cos(lat2);
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLon);
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function isVorNavaid(navaid) {
+  return String(navaid.type || '').toUpperCase().startsWith('VOR');
+}
+
+function mapNavaidsForOrigin(navaids, origin) {
+  return navaids.map((navaid) => ({
+    id: navaid.id,
+    name: navaid.name || navaid.id,
+    type: navaid.type || 'NAVAID',
+    frequencyKhz: navaid.frequencyKhz ?? null,
+    bearing: bearingDeg(origin, navaid),
+    distanceNm: distanceNm(origin, navaid),
+    lat: navaid.lat,
+    lon: navaid.lon,
+    altitudeFt: Math.round(navaid.altitudeFt ?? navaid.altitude ?? 0),
+    isoCountry: navaid.isoCountry || '',
+    associatedAirport: navaid.associatedAirport || '',
+  }));
+}
+
+function mapAirportsForOrigin(airports, origin) {
+  return airports.map((airport) => ({
+    id: airport.id,
+    name: airport.name || airport.id,
+    type: airport.type || 'airport',
+    bearing: bearingDeg(origin, airport),
+    distanceNm: distanceNm(origin, airport),
+    lat: airport.lat,
+    lon: airport.lon,
+    altitudeFt: airport.altitudeFt,
+    isoCountry: airport.isoCountry || '',
+    municipality: airport.municipality || '',
+    iataCode: airport.iataCode || '',
+    icaoCode: airport.icaoCode || '',
+  }));
 }
 
 function buildRoutePath(coordinates) {
@@ -65,6 +207,8 @@ function nearestRouteDistance(point, routePath) {
 function parseKmlFile(dataDir, file) {
   const fixes = [];
   const navaids = [];
+  const csvNavaids = loadNavaidsCsv(dataDir);
+  const csvAirports = loadAirportsCsv(dataDir);
   let origin = null;
   let navLabel = file;
   let routePath = [];
@@ -125,6 +269,9 @@ function parseKmlFile(dataDir, file) {
   const nextFix = fixes[1] || fixes[0];
   const activeBearing = nextFix ? bearingDeg(origin, nextFix) : 257;
   const routeDistanceNm = routePath.at(-1)?.routeDistanceNm || 0;
+  const mappedNavaids = mapNavaidsForOrigin([...navaids, ...csvNavaids], origin);
+  const [nearestNavaid] = mappedNavaids.filter(isVorNavaid).sort((a, b) => a.distanceNm - b.distanceNm);
+  const mappedAirports = mapAirportsForOrigin(csvAirports, origin);
 
   return {
     navLabel,
@@ -141,19 +288,16 @@ function parseKmlFile(dataDir, file) {
     groundSpeed: 250,
     wind: {direction: 0, speed: 0},
     rangeNm: 10,
+    navaidRangeNm: 250,
+    navaidTypeFilters: {vor: false, dme: false, tacan: false, ndb: false, other: false},
+    showAirports: false,
     nextWaypoint: nextWaypoint.id,
     distanceNm: nextWaypoint.distanceNm,
-    navaids: navaids.map((navaid) => ({
-      id: navaid.id,
-      bearing: bearingDeg(origin, navaid),
-      distanceNm: distanceNm(origin, navaid),
-      lat: navaid.lat,
-      lon: navaid.lon,
-      altitudeFt: Math.round(navaid.altitude),
-    })),
+    navaids: mappedNavaids,
+    airports: mappedAirports,
     radios: {
-      vor1: {name: navaids[0]?.id || null, bearing: navaids[0] ? bearingDeg(origin, navaids[0]) : null, distanceNm: navaids[0] ? distanceNm(origin, navaids[0]) : null},
-      vor2: {name: navaids[0]?.id || null, bearing: navaids[0] ? bearingDeg(origin, navaids[0]) : null, distanceNm: navaids[0] ? distanceNm(origin, navaids[0]) : null},
+      vor1: {name: nearestNavaid?.id || null, bearing: nearestNavaid?.bearing ?? null, distanceNm: nearestNavaid?.distanceNm ?? null},
+      vor2: {name: nearestNavaid?.id || null, bearing: nearestNavaid?.bearing ?? null, distanceNm: nearestNavaid?.distanceNm ?? null},
     },
     waypoints,
     route,
@@ -188,30 +332,41 @@ const fallbackNavigationState = {
   groundSpeed: 250,
   trueAirSpeed: 250,
   rangeNm: 10,
+  navaidRangeNm: 250,
+  navaidTypeFilters: {vor: false, dme: false, tacan: false, ndb: false, other: false},
+  showAirports: false,
+  currentPosition: {lat: 35.765278, lon: 140.385556, altitudeFt: 41, routeDistanceNm: 0},
+  routePath: [],
+  routeDistanceNm: 0,
   trafficMode: 'HIDDEN',
-  nextWaypoint: '87POY',
+  nextWaypoint: null,
   eta: '00:00',
-  distanceNm: 1.0,
+  distanceNm: null,
   wind: {direction: 0, speed: 0},
   radios: {
     vor1: {name: '---', bearing: null, distanceNm: 0.38},
     vor2: {name: '---', bearing: null, distanceNm: null},
   },
   navaids: [],
-  waypoints: [
-    {id: 'R24SN', bearing: 346, distanceNm: 15.4, kind: 'fix'},
-    {id: 'J3POY', bearing: 350, distanceNm: 13.2, kind: 'fix'},
-    {id: '87POY', bearing: 2, distanceNm: 9.7, kind: 'active'},
-    {id: '20TNQ', bearing: 35, distanceNm: 10.6, kind: 'fix'},
-    {id: '35TNQ', bearing: 42, distanceNm: 8.8, kind: 'fix'},
-    {id: '13BT', bearing: 70, distanceNm: 17.4, kind: 'fix'},
-    {id: '49POY', bearing: 318, distanceNm: 5.8, kind: 'fix'},
-    {id: '31PT', bearing: 300, distanceNm: 3.3, kind: 'fix'},
-    {id: 'YP024', bearing: 80, distanceNm: 2.2, kind: 'fix'},
-    {id: '10TNQ', bearing: 118, distanceNm: 5.4, kind: 'fix'},
-  ],
-  route: ['R24SN', 'J3POY', '87POY', '49POY', '31PT', 'YP024', '10TNQ'],
+  airports: [],
+  waypoints: [],
+  route: [],
 };
+
+function buildNoProfileNavigationState() {
+  const dataDir = path.join(__dirname, 'data');
+  const fallback = structuredClone(fallbackNavigationState);
+  const origin = fallback.currentPosition;
+  fallback.navaids = mapNavaidsForOrigin(loadNavaidsCsv(dataDir), origin);
+  fallback.airports = mapAirportsForOrigin(loadAirportsCsv(dataDir), origin);
+  const [nearestNavaid] = fallback.navaids.filter(isVorNavaid).sort((a, b) => a.distanceNm - b.distanceNm);
+  fallback.radios = {
+    ...fallback.radios,
+    vor1: {name: nearestNavaid?.id || '---', bearing: nearestNavaid?.bearing ?? null, distanceNm: nearestNavaid?.distanceNm ?? null},
+    vor2: {name: nearestNavaid?.id || '---', bearing: nearestNavaid?.bearing ?? null, distanceNm: nearestNavaid?.distanceNm ?? null},
+  };
+  return fallback;
+}
 
 let activeProfileId = null;
 const navigationState = structuredClone(fallbackNavigationState);
@@ -221,13 +376,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/navigation', (req, res) => {
   const kmlProfiles = parseKmlProfiles();
-  const requestedProfileId = req.query.profile || activeProfileId || kmlProfiles[0]?.id;
+  const requestedProfileId = req.query.profile || null;
   const profile = kmlProfiles.find((nextProfile) => nextProfile.id === requestedProfileId);
   if (profile) {
     activeProfileId = profile.id;
     Object.assign(navigationState, structuredClone(fallbackNavigationState), structuredClone(profile.navigation));
   } else {
-    Object.assign(navigationState, structuredClone(fallbackNavigationState));
+    activeProfileId = null;
+    Object.assign(navigationState, buildNoProfileNavigationState());
   }
   res.json(navigationState);
 });
@@ -235,7 +391,7 @@ app.get('/api/navigation', (req, res) => {
 app.get('/api/profiles', (req, res) => {
   const kmlProfiles = parseKmlProfiles();
   if (!kmlProfiles.some((profile) => profile.id === activeProfileId)) {
-    activeProfileId = kmlProfiles[0]?.id || null;
+    activeProfileId = null;
   }
 
   res.json({

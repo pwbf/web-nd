@@ -19,8 +19,10 @@ body {
   min-height: 100vh;
   background: #0b0d10;
   color: var(--white);
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   font-family: "Roboto Mono", "Consolas", "Lucida Console", monospace;
   padding: 16px;
 }
@@ -31,6 +33,11 @@ body {
   grid-template-columns: minmax(320px, 960px) 260px;
   gap: 18px;
   align-items: start;
+}
+
+.display-column {
+  display: grid;
+  gap: 12px;
 }
 
 .instrument {
@@ -257,10 +264,10 @@ body {
 
 .controls {
   display: grid;
-  gap: 14px;
-  padding: 14px;
-  background: #090b0e;
-  border: 1px solid #343941;
+  gap: 12px;
+  padding: 12px;
+  background: #080a0d;
+  border: 1px solid #2c333b;
   border-radius: 8px;
   box-shadow: 0 18px 45px rgba(0, 0, 0, 0.25);
 }
@@ -287,7 +294,7 @@ body {
 
 .controls-body {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .controls.collapsed .controls-body {
@@ -296,7 +303,7 @@ body {
 
 .control-row {
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .control-row[hidden] {
@@ -305,7 +312,7 @@ body {
 
 label {
   color: #aeb4ba;
-  font-size: 13px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -319,10 +326,10 @@ button {
 select,
 input[type="number"] {
   width: 100%;
-  min-height: 38px;
+  min-height: 34px;
   color: #f2f6f8;
-  background: #161a1f;
-  border: 1px solid #3c424b;
+  background: #11161c;
+  border: 1px solid #333b45;
   border-radius: 6px;
   padding: 0 10px;
 }
@@ -334,7 +341,32 @@ input[type="range"] {
 
 output {
   color: var(--cyan);
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.control-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #0d1015;
+  border: 1px solid #242b33;
+  border-radius: 8px;
+}
+
+.control-section h2 {
+  margin: 0;
+  color: #dfe7ea;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .segmented,
@@ -349,10 +381,10 @@ output {
 }
 
 button {
-  min-height: 38px;
+  min-height: 34px;
   color: #dfe7ea;
-  background: #151a20;
-  border: 1px solid #3a414a;
+  background: #121820;
+  border: 1px solid #333d48;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -370,17 +402,24 @@ button.active {
 .check-row {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 32px;
+  gap: 8px;
+  min-height: 28px;
   color: #dfe7ea;
   cursor: pointer;
   text-transform: none;
+  letter-spacing: 0;
 }
 
 .check-row input {
   width: 16px;
   height: 16px;
   accent-color: var(--cyan);
+}
+
+.check-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
 }
 
 .debug-panel {
@@ -412,9 +451,84 @@ button.active {
   white-space: pre-wrap;
 }
 
+.navaid-panel {
+  background: #050607;
+  border: 1px solid #2f353d;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.navaid-panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 0 14px;
+  color: #dfe7ea;
+  cursor: pointer;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  list-style-position: outside;
+  text-transform: uppercase;
+}
+
+.navaid-panel summary span {
+  color: var(--cyan);
+}
+
+.navaid-table-wrap {
+  max-height: 260px;
+  overflow: auto;
+  border-top: 1px solid #252b33;
+}
+
+.navaid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.navaid-table th,
+.navaid-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #171d23;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.navaid-table th {
+  position: sticky;
+  top: 0;
+  color: var(--cyan);
+  background: #090c10;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.navaid-table td {
+  color: #c8d0d4;
+}
+
+.navaid-table td:first-child {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.site-footer {
+  width: min(100%, 1240px);
+  margin-top: 12px;
+  color: #7f858c;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
 @media (max-width: 920px) {
   body {
-    align-items: start;
+    align-items: stretch;
+    justify-content: flex-start;
   }
 
   .app-shell {
@@ -434,6 +548,10 @@ button.active {
     grid-template-columns: 1fr 1fr;
   }
 
+  .control-section {
+    align-content: start;
+  }
+
   .segmented,
   .control-actions,
   .check-row,
@@ -448,6 +566,11 @@ button.active {
   }
 
   .controls {
+    grid-template-columns: 1fr;
+  }
+
+  .controls-body,
+  .control-grid {
     grid-template-columns: 1fr;
   }
 
