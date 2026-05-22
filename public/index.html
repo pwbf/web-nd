@@ -103,56 +103,6 @@
       </div>
       <div class="controls-body" id="controlsBody">
         <section class="control-section">
-          <h2>Display</h2>
-          <div class="control-row">
-            <label for="profileControl">KML Profile</label>
-            <select id="profileControl"></select>
-            <button type="button" id="kmlDeleteButton">Delete Selected KML</button>
-            <output id="kmlProfileStatus" for="profileControl"></output>
-          </div>
-          <div class="control-row" id="gmapImportRow" hidden>
-            <label for="gmapUrlControl">Google Maps URL</label>
-            <input id="gmapUrlControl" type="url" placeholder="https://maps.app.goo.gl/..." />
-            <button type="button" id="gmapImportButton">Import KML</button>
-            <output id="gmapImportStatus" for="gmapUrlControl"></output>
-          </div>
-          <div class="control-row">
-            <label for="kmlUploadControl">Upload KML</label>
-            <input id="kmlUploadControl" type="file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" />
-            <button type="button" id="kmlUploadButton">Upload KML</button>
-            <output id="kmlUploadStatus" for="kmlUploadControl"></output>
-          </div>
-          <div class="control-grid">
-            <div class="control-row">
-              <label for="rangeControl">Range</label>
-              <select id="rangeControl">
-                <option value="0.5">0.5 NM</option>
-                <option value="1">1 NM</option>
-                <option value="10" selected>10 NM</option>
-                <option value="20">20 NM</option>
-                <option value="40">40 NM</option>
-                <option value="80">80 NM</option>
-                <option value="160">160 NM</option>
-                <option value="320">320 NM</option>
-              </select>
-            </div>
-            <div class="control-row">
-              <label for="unitControl">Units</label>
-              <select id="unitControl">
-                <option value="NM" selected>NM</option>
-                <option value="km">km</option>
-                <option value="m">m</option>
-              </select>
-            </div>
-          </div>
-          <div class="segmented" role="group" aria-label="ND mode">
-            <button type="button" class="active" data-mode="ARC">ARC</button>
-            <button type="button" data-mode="ROSE">ROSE</button>
-            <button type="button" data-mode="PLAN">PLAN</button>
-          </div>
-        </section>
-
-        <section class="control-section">
           <h2>Map Layers</h2>
           <div class="layer-toggles" role="group" aria-label="ND map layer quick toggles">
             <button type="button" class="active" data-layer-toggle="csrt" aria-pressed="true"><span></span>CSRT</button>
@@ -205,6 +155,78 @@
         </section>
 
         <section class="control-section">
+          <h2>Simulation & GPS</h2>
+          <div class="control-actions">
+            <button type="button" id="locationButton">Use GPS</button>
+            <button type="button" id="playButton">Play</button>
+            <button type="button" id="recenterButton">Reset</button>
+          </div>
+          <label class="check-row" for="fakeHeadingControl">
+            <input id="fakeHeadingControl" type="checkbox" />
+            <span>Fake Heading</span>
+          </label>
+          <div class="control-row">
+            <label for="gpsHeadingMinSpeedControl">GPS Heading Min Speed</label>
+            <input id="gpsHeadingMinSpeedControl" type="range" min="0" max="5" step="0.2" value="2" />
+            <output id="gpsHeadingMinSpeedReadout" for="gpsHeadingMinSpeedControl">2.0 m/s</output>
+          </div>
+        </section>
+
+        <section class="control-section">
+          <h2>Display</h2>
+          <div class="control-grid">
+            <div class="control-row">
+              <label for="rangeControl">Range</label>
+              <select id="rangeControl">
+                <option value="0.5">0.5 NM</option>
+                <option value="1">1 NM</option>
+                <option value="10" selected>10 NM</option>
+                <option value="20">20 NM</option>
+                <option value="40">40 NM</option>
+                <option value="80">80 NM</option>
+                <option value="160">160 NM</option>
+                <option value="320">320 NM</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label for="unitControl">Units</label>
+              <select id="unitControl">
+                <option value="NM" selected>NM</option>
+                <option value="km">km</option>
+                <option value="m">m</option>
+              </select>
+            </div>
+          </div>
+          <div class="segmented" role="group" aria-label="ND mode">
+            <button type="button" class="active" data-mode="ARC">ARC</button>
+            <button type="button" data-mode="ROSE">ROSE</button>
+            <button type="button" data-mode="PLAN">PLAN</button>
+          </div>
+        </section>
+
+        <section class="control-section">
+          <h2>Profile</h2>
+          <div class="control-row">
+            <label for="profileControl">KML Profile</label>
+            <select id="profileControl"></select>
+            <button type="button" id="kmlDeleteButton">Delete Selected KML</button>
+            <output id="kmlProfileStatus" for="profileControl"></output>
+          </div>
+          <div class="control-row" id="gmapImportRow" hidden>
+            <label for="gmapUrlControl">Google Maps URL</label>
+            <input id="gmapUrlControl" type="url" placeholder="https://maps.app.goo.gl/..." />
+            <button type="button" id="gmapImportButton">Import KML</button>
+            <output id="gmapImportStatus" for="gmapUrlControl"></output>
+          </div>
+          <div class="control-row">
+            <label for="kmlUploadControl">Upload KML</label>
+            <input id="kmlUploadControl" type="file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" />
+            <button type="button" id="kmlUploadButton">Upload KML</button>
+            <output id="kmlUploadStatus" for="kmlUploadControl"></output>
+          </div>
+        </section>
+
+        <section class="control-section">
           <h2>Position</h2>
           <div class="control-row">
             <label for="headingControl">Heading</label>
@@ -246,24 +268,6 @@
           </div>
         </section>
 
-        <section class="control-section">
-          <h2>Simulation & GPS</h2>
-          <div class="control-actions">
-            <button type="button" id="locationButton">Use GPS</button>
-            <button type="button" id="playButton">Play</button>
-            <button type="button" id="recenterButton">Reset</button>
-          </div>
-          <label class="check-row" for="fakeHeadingControl">
-            <input id="fakeHeadingControl" type="checkbox" />
-            <span>Fake Heading</span>
-          </label>
-          <div class="control-row">
-            <label for="gpsHeadingMinSpeedControl">GPS Heading Min Speed</label>
-            <input id="gpsHeadingMinSpeedControl" type="range" min="0" max="5" step="0.2" value="2" />
-            <output id="gpsHeadingMinSpeedReadout" for="gpsHeadingMinSpeedControl">2.0 m/s</output>
-          </div>
-        </section>
-
         <details class="debug-panel">
           <summary>Debug</summary>
           <pre id="debugLog" class="debug-log" aria-live="polite"></pre>
@@ -272,7 +276,7 @@
     </aside>
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-  <footer class="site-footer">WebND project v1.4 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
+  <footer class="site-footer">WebND project v1.5 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
   <script src="app.js"></script>
 </body>
 </html>

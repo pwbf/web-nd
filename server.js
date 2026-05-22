@@ -528,7 +528,7 @@ function parseKmlProfiles() {
 }
 
 const fallbackNavigationState = {
-  callsign: 'JX801',
+  callsign: 'AX200',
   navLabel: 'ILS05L',
   mode: 'ARC',
   source: 'SIM',
@@ -540,7 +540,7 @@ const fallbackNavigationState = {
   navaidRangeNm: 250,
   navaidTypeFilters: {vor: false, dme: false, tacan: false, ndb: false, other: false},
   showAirports: false,
-  currentPosition: {lat: 35.765278, lon: 140.385556, altitudeFt: 41, routeDistanceNm: 0},
+  currentPosition: {lat: 25.0777, lon: 121.233002, altitudeFt: 200, routeDistanceNm: 0},
   routePath: [],
   routeDistanceNm: 0,
   trafficMode: 'HIDDEN',

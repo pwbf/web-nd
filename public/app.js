@@ -22,7 +22,7 @@ const DEBUG_CANVAS_COORDS = true;
 const DEBUG_INVERTED_NAVAID = true;
 
 const fallbackState = {
-  callsign: 'IT200',
+  callsign: 'AX200',
   navLabel: 'ILS05L',
   mode: 'ARC',
   source: 'SIM',
