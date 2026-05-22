@@ -9,6 +9,7 @@ The display is pilot-centric and forward-looking. It supports ARC, ROSE, and PLA
 - Airbus-inspired Navigation Display rendered on HTML canvas
 - ARC-mode half-circle compass and range ring presentation
 - KML route profile loading from `data/*.kml`
+- Browser KML upload with server-side filename and content validation
 - Manual latitude/longitude input
 - Browser GPS support with temporary `GPS PRIMARY` annunciation
 - Route progress slider and play/pause simulation
@@ -89,6 +90,23 @@ Content-Type: application/json
 {"url":"https://maps.app.goo.gl/example"}
 ```
 
+Upload a local KML route file:
+
+```bash
+POST /api/kml/upload
+Content-Type: application/json
+```
+
+```json
+{"filename":"my-route.kml","content":"<kml>...</kml>"}
+```
+
+Read server-side feature flags:
+
+```bash
+GET /api/config
+```
+
 The API is intentionally small so a future adapter can translate navigation sources, such as Google Maps navigation data, into route points, waypoints, aircraft position, heading, distance, and ETA.
 
 ## Google Maps Import Configuration
@@ -104,6 +122,22 @@ GMAP_JOBS_PASSWORD=your-api-password
 ```
 
 Do not put the job API password in browser-side code.
+
+When `GMAP_JOBS_PASSWORD` is not configured, the Google Maps URL import field is hidden in the web UI.
+
+## KML Uploads and Retention
+
+Uploaded KML files are written into `data/` after filename sanitization and basic KML content validation. The server accepts only `.kml` names, rejects DTD/entity declarations, rejects empty or oversized files, and writes files without executable permissions.
+
+KML files created by Google Maps import are considered temporary when their name matches `route*.kml`. They are removed after 24 hours by default. User-uploaded KML files are preserved, including uploads originally named `route*.kml`, which are renamed with an `uploaded-` prefix.
+
+Retention settings:
+
+```bash
+MAX_KML_UPLOAD_BYTES=10485760
+ROUTE_KML_RETENTION_HOURS=24
+ROUTE_KML_CLEANUP_INTERVAL_MS=3600000
+```
 
 ## Run Locally
 
@@ -122,7 +156,7 @@ npm start
 Open:
 
 ```text
-https://localhost:8500
+https://localhost:4000
 ```
 
 The server expects a local certificate and key at:
@@ -149,13 +183,13 @@ docker build -t webnd .
 Run the container:
 
 ```bash
-docker run --rm -p 8500:8500 webnd
+docker run --rm -p 4000:4000 webnd
 ```
 
 Open:
 
 ```text
-https://localhost:8500
+https://localhost:4000
 ```
 
 Or use Docker Compose:

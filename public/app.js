@@ -22,7 +22,7 @@ const DEBUG_CANVAS_COORDS = true;
 const DEBUG_INVERTED_NAVAID = true;
 
 const fallbackState = {
-  callsign: 'JX801',
+  callsign: 'IT200',
   navLabel: 'ILS05L',
   mode: 'ARC',
   source: 'SIM',
@@ -34,7 +34,8 @@ const fallbackState = {
   navaidRangeNm: 250,
   navaidTypeFilters: {vor: false, dme: false, tacan: false, ndb: false, other: false},
   showAirports: false,
-  currentPosition: {lat: 35.765278, lon: 140.385556, altitudeFt: 41, routeDistanceNm: 0},
+  showCourseRoute: true,
+  currentPosition: {lat: 25.0777, lon: 121.233002, altitudeFt: 200, routeDistanceNm: 0},
   routePath: [],
   routeDistanceNm: 0,
   trafficMode: 'HIDDEN',
@@ -63,6 +64,7 @@ let previousGpsTimestamp = null;
 let visibleNavaidTableSignature = '';
 let visibleAirportTableSignature = '';
 let gpsPrimaryVisibleUntil = 0;
+let toastTimer = null;
 
 const els = {
   gs: document.getElementById('gsReadout'),
@@ -88,12 +90,19 @@ const els = {
   visibleAirportTableBody: document.getElementById('visibleAirportTableBody'),
   trafficStatus: document.getElementById('trafficStatus'),
   copyrightYear: document.getElementById('copyrightYear'),
+  toast: document.getElementById('toast'),
   controlsPanel: document.querySelector('.controls'),
   controlsToggle: document.getElementById('controlsToggle'),
   profile: document.getElementById('profileControl'),
+  kmlDeleteButton: document.getElementById('kmlDeleteButton'),
+  kmlProfileStatus: document.getElementById('kmlProfileStatus'),
+  gmapImportRow: document.getElementById('gmapImportRow'),
   gmapUrl: document.getElementById('gmapUrlControl'),
   gmapImport: document.getElementById('gmapImportButton'),
   gmapImportStatus: document.getElementById('gmapImportStatus'),
+  kmlUpload: document.getElementById('kmlUploadControl'),
+  kmlUploadButton: document.getElementById('kmlUploadButton'),
+  kmlUploadStatus: document.getElementById('kmlUploadStatus'),
   range: document.getElementById('rangeControl'),
   navaidRange: document.getElementById('navaidRangeControl'),
   showVor: document.getElementById('showVorControl'),
@@ -102,6 +111,7 @@ const els = {
   showNdb: document.getElementById('showNdbControl'),
   showOtherNavaid: document.getElementById('showOtherNavaidControl'),
   showAirports: document.getElementById('showAirportsControl'),
+  layerButtons: document.querySelectorAll('[data-layer-toggle]'),
   unit: document.getElementById('unitControl'),
   headingControl: document.getElementById('headingControl'),
   latitudeControl: document.getElementById('latitudeControl'),
@@ -137,6 +147,16 @@ function debugLog(message) {
   const nextLine = `[${timestamp}] ${message}`;
   const lines = [nextLine, ...(els.debugLog.textContent ? els.debugLog.textContent.split('\n') : [])].slice(0, 80);
   els.debugLog.textContent = lines.join('\n');
+}
+
+function showToast(message) {
+  if (!els.toast) return;
+  window.clearTimeout(toastTimer);
+  els.toast.textContent = message;
+  els.toast.hidden = false;
+  toastTimer = window.setTimeout(() => {
+    els.toast.hidden = true;
+  }, 3200);
 }
 
 function normalizeDegrees(value) {
@@ -239,6 +259,48 @@ function navaidTypeIsVisible(navaid) {
     return Boolean(state.navaidTypeFilters?.vor) || isTrackedVorNavaid(navaid);
   }
   return state.navaidTypeFilters?.[navaidCategory(navaid)] ?? true;
+}
+
+function activeMapLayer() {
+  if (state.showAirports) return 'arpt';
+  if (state.navaidTypeFilters?.ndb) return 'ndb';
+  if (state.navaidTypeFilters?.vor && state.navaidTypeFilters?.dme) return 'vor-d';
+  return null;
+}
+
+function syncLayerToggles() {
+  const activeLayer = activeMapLayer();
+  els.layerButtons.forEach((button) => {
+    const layer = button.dataset.layerToggle;
+    const active = layer === 'csrt' ? state.showCourseRoute !== false : layer === activeLayer;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function syncLayerControls() {
+  els.showVor.checked = Boolean(state.navaidTypeFilters?.vor);
+  els.showDme.checked = Boolean(state.navaidTypeFilters?.dme);
+  els.showTacan.checked = Boolean(state.navaidTypeFilters?.tacan);
+  els.showNdb.checked = Boolean(state.navaidTypeFilters?.ndb);
+  els.showOtherNavaid.checked = Boolean(state.navaidTypeFilters?.other);
+  els.showAirports.checked = Boolean(state.showAirports);
+  syncLayerToggles();
+}
+
+function applyExclusiveMapLayer(layer) {
+  state.navaidTypeFilters = {
+    ...state.navaidTypeFilters,
+    vor: layer === 'vor-d',
+    dme: layer === 'vor-d',
+    ndb: layer === 'ndb',
+    tacan: false,
+    other: false,
+  };
+  state.showAirports = layer === 'arpt';
+  visibleNavaidTableSignature = '';
+  visibleAirportTableSignature = '';
+  syncLayerControls();
 }
 
 function gpsHeadingMinSpeedText(valueMps) {
@@ -353,6 +415,7 @@ function mergeNavigation(nextState) {
   state.radios = {...fallbackState.radios, ...(nextState.radios || {})};
   state.wind = {...fallbackState.wind, ...(nextState.wind || {})};
   state.navaidTypeFilters = {...fallbackState.navaidTypeFilters, ...(nextState.navaidTypeFilters || state.navaidTypeFilters || {})};
+  state.showCourseRoute = nextState.showCourseRoute ?? state.showCourseRoute ?? fallbackState.showCourseRoute;
   state.waypoints = Array.isArray(nextState.waypoints) ? nextState.waypoints : state.waypoints;
   state.navaids = Array.isArray(nextState.navaids) ? nextState.navaids : state.navaids || [];
   state.airports = Array.isArray(nextState.airports) ? nextState.airports : state.airports || [];
@@ -362,12 +425,7 @@ function mergeNavigation(nextState) {
   visibleAirportTableSignature = '';
   els.range.value = String(state.rangeNm);
   els.navaidRange.value = String(state.navaidRangeNm);
-  els.showVor.checked = state.navaidTypeFilters.vor;
-  els.showDme.checked = state.navaidTypeFilters.dme;
-  els.showTacan.checked = state.navaidTypeFilters.tacan;
-  els.showNdb.checked = state.navaidTypeFilters.ndb;
-  els.showOtherNavaid.checked = state.navaidTypeFilters.other;
-  els.showAirports.checked = Boolean(state.showAirports);
+  syncLayerControls();
   syncRangeOptionLabels();
   syncHeadingControl();
   els.trueAirSpeedControl.value = String(Math.round(state.trueAirSpeed));
@@ -417,11 +475,17 @@ async function loadProfiles() {
       els.profile.append(option);
     });
     els.profile.disabled = false;
+    syncKmlProfileActions();
   } catch (error) {
     console.warn('Unable to load KML profiles', error);
     els.profile.innerHTML = '<option value="">None</option>';
     els.profile.disabled = false;
+    syncKmlProfileActions();
   }
+}
+
+function syncKmlProfileActions() {
+  els.kmlDeleteButton.disabled = !els.profile.value;
 }
 
 async function loadNavigation(profileId = '') {
@@ -431,6 +495,22 @@ async function loadNavigation(profileId = '') {
     mergeNavigation(await response.json());
   } catch (error) {
     console.warn('Using local navigation state', error);
+  }
+}
+
+async function loadServerConfig() {
+  try {
+    const response = await fetch('/api/config');
+    if (!response.ok) return;
+    const config = await response.json();
+    if (els.gmapImportRow) {
+      els.gmapImportRow.hidden = !config.gmapImportEnabled;
+    }
+  } catch (error) {
+    console.warn('Unable to load server config', error);
+    if (els.gmapImportRow) {
+      els.gmapImportRow.hidden = true;
+    }
   }
 }
 
@@ -458,14 +538,89 @@ async function importGoogleMapsRoute() {
       els.profile.value = firstFile;
       await loadNavigation(firstFile);
       baselineState = structuredClone(state);
+      syncKmlProfileActions();
     }
+    els.gmapUrl.value = '';
     els.gmapImportStatus.textContent = firstFile ? `Imported ${firstFile}` : 'Import complete';
+    showToast(firstFile ? `Imported and loaded ${firstFile}` : 'Google Maps import complete');
     debugLog(`Google Maps import job ${result.jobId} complete`);
   } catch (error) {
     console.warn('Google Maps import failed', error);
     els.gmapImportStatus.textContent = error.message;
   } finally {
     els.gmapImport.disabled = false;
+  }
+}
+
+async function uploadKmlProfile() {
+  const [file] = els.kmlUpload.files || [];
+  if (!file) {
+    els.kmlUploadStatus.textContent = 'Choose a KML file';
+    return;
+  }
+  if (!file.name.toLowerCase().endsWith('.kml')) {
+    els.kmlUploadStatus.textContent = 'Only .kml files are allowed';
+    return;
+  }
+
+  els.kmlUploadButton.disabled = true;
+  els.kmlUploadStatus.textContent = 'Uploading KML...';
+  try {
+    const content = await file.text();
+    if (!/<kml[\s>]/i.test(content) || !/<coordinates>[\s\S]*?<\/coordinates>/i.test(content)) {
+      throw new Error('File does not look like a route KML');
+    }
+
+    const response = await fetch('/api/kml/upload', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filename: file.name, content}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Upload failed');
+
+    await loadProfiles();
+    els.profile.value = result.file;
+    await loadNavigation(result.file);
+    baselineState = structuredClone(state);
+    els.kmlUpload.value = '';
+    els.kmlUploadStatus.textContent = `Uploaded ${result.file}`;
+    debugLog(`KML profile uploaded: ${result.file}`);
+  } catch (error) {
+    console.warn('KML upload failed', error);
+    els.kmlUploadStatus.textContent = error.message;
+  } finally {
+    els.kmlUploadButton.disabled = false;
+  }
+}
+
+async function deleteSelectedKmlProfile() {
+  const filename = els.profile.value;
+  if (!filename) {
+    els.kmlProfileStatus.textContent = 'Select a KML profile';
+    return;
+  }
+  if (!window.confirm(`Delete ${filename}?`)) return;
+
+  els.kmlDeleteButton.disabled = true;
+  els.kmlProfileStatus.textContent = 'Deleting KML...';
+  try {
+    const response = await fetch(`/api/kml/${encodeURIComponent(filename)}`, {method: 'DELETE'});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Delete failed');
+
+    await loadProfiles();
+    els.profile.value = '';
+    clearRouteState();
+    await loadNavigation('');
+    baselineState = structuredClone(state);
+    els.kmlProfileStatus.textContent = `Deleted ${result.deleted}`;
+    debugLog(`KML profile deleted: ${result.deleted}`);
+  } catch (error) {
+    console.warn('KML delete failed', error);
+    els.kmlProfileStatus.textContent = error.message;
+  } finally {
+    syncKmlProfileActions();
   }
 }
 
@@ -1071,6 +1226,8 @@ function drawRange(view) {
 }
 
 function drawRoute(view) {
+  if (state.showCourseRoute === false) return;
+
   ctx.save();
   clipToAzimuth(view);
   ctx.strokeStyle = colors.green;
@@ -1108,6 +1265,8 @@ function drawDiamond(x, y, size, color) {
 }
 
 function drawWaypoints(view) {
+  if (state.showCourseRoute === false) return;
+
   ctx.save();
   clipToAzimuth(view);
   state.waypoints.forEach((wp) => {
@@ -1447,8 +1606,22 @@ els.navaidRange.addEventListener('change', (event) => {
 });
 
 function updateNavaidTypeFilter(key, checked) {
+  if (checked && key === 'vor') {
+    applyExclusiveMapLayer('vor-d');
+    return;
+  }
+  if (checked && key === 'dme') {
+    applyExclusiveMapLayer('vor-d');
+    return;
+  }
+  if (checked && key === 'ndb') {
+    applyExclusiveMapLayer('ndb');
+    return;
+  }
+
   state.navaidTypeFilters = {...state.navaidTypeFilters, [key]: checked};
   visibleNavaidTableSignature = '';
+  syncLayerControls();
 }
 
 els.showVor.addEventListener('change', (event) => updateNavaidTypeFilter('vor', event.target.checked));
@@ -1457,8 +1630,30 @@ els.showTacan.addEventListener('change', (event) => updateNavaidTypeFilter('taca
 els.showNdb.addEventListener('change', (event) => updateNavaidTypeFilter('ndb', event.target.checked));
 els.showOtherNavaid.addEventListener('change', (event) => updateNavaidTypeFilter('other', event.target.checked));
 els.showAirports.addEventListener('change', (event) => {
-  state.showAirports = event.target.checked;
-  visibleAirportTableSignature = '';
+  if (event.target.checked) {
+    applyExclusiveMapLayer('arpt');
+  } else {
+    state.showAirports = false;
+    visibleAirportTableSignature = '';
+    syncLayerControls();
+  }
+});
+
+els.layerButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const layer = button.dataset.layerToggle;
+    if (layer === 'csrt') {
+      state.showCourseRoute = state.showCourseRoute === false;
+      if (state.showCourseRoute) {
+        applyExclusiveMapLayer(null);
+      } else {
+        syncLayerControls();
+      }
+      return;
+    }
+    if (button.disabled || layer === 'wpt') return;
+    applyExclusiveMapLayer(activeMapLayer() === layer ? null : layer);
+  });
 });
 
 els.gmapImport.addEventListener('click', importGoogleMapsRoute);
@@ -1468,11 +1663,15 @@ els.gmapUrl.addEventListener('keydown', (event) => {
     importGoogleMapsRoute();
   }
 });
+els.kmlUploadButton.addEventListener('click', uploadKmlProfile);
+els.kmlDeleteButton.addEventListener('click', deleteSelectedKmlProfile);
 
 els.profile.addEventListener('change', async (event) => {
   stopLocationWatch();
   simulationPlaying = false;
   els.play.textContent = 'Play';
+  syncKmlProfileActions();
+  els.kmlProfileStatus.textContent = '';
   if (!event.target.value) {
     clearRouteState();
   }
@@ -1588,7 +1787,7 @@ els.recenter.addEventListener('click', () => {
 // Comment out this line to disable click-to-log canvas coordinates.
 enableCanvasCoordinateDebug();
 
-loadProfiles().then(() => loadNavigation()).finally(() => {
+Promise.all([loadServerConfig(), loadProfiles()]).then(() => loadNavigation()).finally(() => {
   baselineState = structuredClone(state);
   updateModeButtons();
   requestAnimationFrame(tick);

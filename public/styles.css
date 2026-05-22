@@ -35,6 +35,26 @@ body {
   align-items: start;
 }
 
+.toast {
+  position: fixed;
+  right: 18px;
+  bottom: 42px;
+  z-index: 20;
+  max-width: min(360px, calc(100vw - 32px));
+  color: var(--green);
+  background: transparent;
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.35;
+  text-shadow: 0 0 5px rgb(0 255 59 / 55%);
+}
+
+.toast[hidden] {
+  display: none;
+}
+
 .display-column {
   display: grid;
   gap: 12px;
@@ -326,7 +346,8 @@ button {
 select,
 input[type="number"],
 input[type="url"],
-input[type="text"] {
+input[type="text"],
+input[type="file"] {
   width: 100%;
   min-height: 34px;
   color: #f2f6f8;
@@ -375,6 +396,83 @@ output {
   gap: 8px;
 }
 
+.layer-toggles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.layer-toggle-hint {
+  position: relative;
+  min-width: 0;
+}
+
+.layer-toggle-hint::after {
+  content: attr(data-hint);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 7px);
+  z-index: 5;
+  width: max-content;
+  max-width: 210px;
+  color: var(--green);
+  background: #050505;
+  border: 1px solid var(--green);
+  border-radius: 4px;
+  padding: 6px 7px;
+  font-size: 10px;
+  line-height: 1.3;
+  text-transform: none;
+  letter-spacing: 0;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+}
+
+.layer-toggle-hint:hover::after,
+.layer-toggle-hint:focus-within::after {
+  opacity: 1;
+}
+
+.layer-toggle-hint button {
+  width: 100%;
+}
+
+.layer-toggles button {
+  position: relative;
+  min-height: 36px;
+  padding: 14px 4px 4px;
+  color: #b9bec2;
+  background: #25292e;
+  border-color: #444a51;
+  border-radius: 3px;
+  font-size: 10px;
+  line-height: 1;
+  text-align: center;
+}
+
+.layer-toggles button span {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  right: 5px;
+  height: 4px;
+  background: #8b8f93;
+  border-radius: 1px;
+}
+
+.layer-toggles button.active span {
+  background: var(--green);
+  box-shadow: 0 0 5px rgb(0 255 59 / 55%);
+}
+
+.layer-toggles button:disabled {
+  color: #6b7075;
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .segmented,
 .control-actions {
   display: grid;
@@ -403,6 +501,12 @@ button.active {
   color: #001014;
   background: var(--cyan);
   border-color: var(--cyan);
+}
+
+.layer-toggles button.active {
+  color: #e2e6e8;
+  background: #25292e;
+  border-color: #4d555d;
 }
 
 .check-row {

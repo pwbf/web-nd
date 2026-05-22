@@ -3,6 +3,6 @@ WORKDIR /usr/src/app
 COPY package.json package-lock.json* ./
 RUN npm install --production
 COPY . .
-EXPOSE 8500
-ENV PORT=8500
+EXPOSE 4000
+ENV PORT=4000
 CMD ["node", "server.js"]

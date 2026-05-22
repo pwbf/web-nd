@@ -1,14 +1,18 @@
 services:
   nd-webui:
     build: .
-    image: nd-webui
+    image: webnd
+    container_name: webnd
     ports:
-      - "8500:8500"
+      - "4000:4000"
     environment:
-      PORT: 8500
+      PORT: 4000
       GMAP_JOBS_URL: ${GMAP_JOBS_URL:-https://neb.pwbf.pw:8585}
       GMAP_JOBS_USER: ${GMAP_JOBS_USER:-admin}
       GMAP_JOBS_PASSWORD: ${GMAP_JOBS_PASSWORD:-}
+      MAX_KML_UPLOAD_BYTES: ${MAX_KML_UPLOAD_BYTES:-10485760}
+      ROUTE_KML_RETENTION_HOURS: ${ROUTE_KML_RETENTION_HOURS:-24}
+      ROUTE_KML_CLEANUP_INTERVAL_MS: ${ROUTE_KML_CLEANUP_INTERVAL_MS:-3600000}
     restart: unless-stopped
     volumes:
       - ./public:/usr/src/app/public:ro

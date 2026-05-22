@@ -107,12 +107,20 @@
           <div class="control-row">
             <label for="profileControl">KML Profile</label>
             <select id="profileControl"></select>
+            <button type="button" id="kmlDeleteButton">Delete Selected KML</button>
+            <output id="kmlProfileStatus" for="profileControl"></output>
           </div>
-          <div class="control-row">
+          <div class="control-row" id="gmapImportRow" hidden>
             <label for="gmapUrlControl">Google Maps URL</label>
             <input id="gmapUrlControl" type="url" placeholder="https://maps.app.goo.gl/..." />
             <button type="button" id="gmapImportButton">Import KML</button>
             <output id="gmapImportStatus" for="gmapUrlControl"></output>
+          </div>
+          <div class="control-row">
+            <label for="kmlUploadControl">Upload KML</label>
+            <input id="kmlUploadControl" type="file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" />
+            <button type="button" id="kmlUploadButton">Upload KML</button>
+            <output id="kmlUploadStatus" for="kmlUploadControl"></output>
           </div>
           <div class="control-grid">
             <div class="control-row">
@@ -146,6 +154,15 @@
 
         <section class="control-section">
           <h2>Map Layers</h2>
+          <div class="layer-toggles" role="group" aria-label="ND map layer quick toggles">
+            <button type="button" class="active" data-layer-toggle="csrt" aria-pressed="true"><span></span>CSRT</button>
+            <span class="layer-toggle-hint" data-hint="This feature is not implemented yet">
+              <button type="button" data-layer-toggle="wpt" aria-pressed="false" disabled title="This feature is not implemented yet"><span></span>WPT</button>
+            </span>
+            <button type="button" data-layer-toggle="vor-d" aria-pressed="false"><span></span>VOR.D</button>
+            <button type="button" data-layer-toggle="ndb" aria-pressed="false"><span></span>NDB</button>
+            <button type="button" data-layer-toggle="arpt" aria-pressed="false"><span></span>ARPT</button>
+          </div>
           <div class="control-row">
             <label for="navaidRangeControl">Navaid Range</label>
             <select id="navaidRangeControl">
@@ -254,7 +271,8 @@
       </div>
     </aside>
   </main>
-  <footer class="site-footer">WebND project v1.3 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <footer class="site-footer">WebND project v1.4 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
   <script src="app.js"></script>
 </body>
 </html>

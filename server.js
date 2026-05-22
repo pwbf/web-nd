@@ -4,13 +4,16 @@ const fs = require('fs');
 const https = require('https');
 const path = require('path');
 const app = express();
-const PORT = process.env.PORT || 8500;
+const PORT = process.env.PORT || 4000;
 const HTTPS_CERT_PATH = process.env.HTTPS_CERT_PATH || path.join(__dirname, 'cert', 'server.crt');
 const HTTPS_KEY_PATH = process.env.HTTPS_KEY_PATH || path.join(__dirname, 'cert', 'server.key');
 const GMAP_JOBS_URL = process.env.GMAP_JOBS_URL || 'https://neb.pwbf.pw:8585';
 const GMAP_JOBS_USER = process.env.GMAP_JOBS_USER || 'admin';
 const GMAP_JOBS_PASSWORD = process.env.GMAP_JOBS_PASSWORD || '';
 const GMAP_JOB_TIMEOUT_MS = Number(process.env.GMAP_JOB_TIMEOUT_MS || 180000);
+const MAX_KML_UPLOAD_BYTES = Number(process.env.MAX_KML_UPLOAD_BYTES || 10 * 1024 * 1024);
+const ROUTE_KML_RETENTION_HOURS = Number(process.env.ROUTE_KML_RETENTION_HOURS || 24);
+const ROUTE_KML_CLEANUP_INTERVAL_MS = Number(process.env.ROUTE_KML_CLEANUP_INTERVAL_MS || 60 * 60 * 1000);
 let navaidCsvCache = {mtimeMs: null, navaids: []};
 let airportCsvCache = {mtimeMs: null, airports: []};
 
@@ -76,6 +79,78 @@ function uniqueDataPath(dataDir, filename) {
     counter += 1;
   }
   return path.join(dataDir, candidate);
+}
+
+function dataKmlPath(filename) {
+  const safeName = safeDataFilename(filename);
+  if (!safeName || safeName !== filename || !safeName.toLowerCase().endsWith('.kml')) {
+    throw new Error('A valid KML profile filename is required');
+  }
+
+  const dataDir = path.resolve(__dirname, 'data');
+  const filePath = path.resolve(dataDir, safeName);
+  if (!filePath.startsWith(`${dataDir}${path.sep}`)) {
+    throw new Error('Invalid KML profile path');
+  }
+  return {safeName, filePath};
+}
+
+function uploadedKmlFilename(filename) {
+  const safeName = safeDataFilename(filename);
+  const parsed = path.parse(safeName);
+  const base = parsed.name || 'uploaded-route';
+  const prefixedBase = /^route/i.test(base) ? `uploaded-${base}` : base;
+  return `${prefixedBase}.kml`;
+}
+
+function validateKmlContent(filename, content) {
+  const safeName = safeDataFilename(filename);
+  if (!safeName.toLowerCase().endsWith('.kml')) {
+    throw new Error('Only .kml files are allowed');
+  }
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new Error('KML content is empty');
+  }
+  if (Buffer.byteLength(content, 'utf8') > MAX_KML_UPLOAD_BYTES) {
+    throw new Error(`KML file exceeds ${MAX_KML_UPLOAD_BYTES} bytes`);
+  }
+  if (content.includes('\0')) {
+    throw new Error('KML content contains invalid bytes');
+  }
+  if (/<!DOCTYPE|<!ENTITY/i.test(content)) {
+    throw new Error('KML content with DTD or entity declarations is not allowed');
+  }
+  if (!/<kml[\s>]/i.test(content) || !/<coordinates>[\s\S]*?<\/coordinates>/i.test(content)) {
+    throw new Error('KML content does not look like a route KML file');
+  }
+}
+
+function writeKmlFile(filename, content, {preserveUploadName = false} = {}) {
+  validateKmlContent(filename, content);
+  const dataDir = path.join(__dirname, 'data');
+  fs.mkdirSync(dataDir, {recursive: true});
+  const outputName = preserveUploadName ? uploadedKmlFilename(filename) : safeDataFilename(filename);
+  const outputPath = uniqueDataPath(dataDir, outputName);
+  fs.writeFileSync(outputPath, content, {mode: 0o644});
+  fs.chmodSync(outputPath, 0o644);
+  return path.basename(outputPath);
+}
+
+function cleanupRouteKmlFiles() {
+  if (!Number.isFinite(ROUTE_KML_RETENTION_HOURS) || ROUTE_KML_RETENTION_HOURS <= 0) return;
+  const dataDir = path.join(__dirname, 'data');
+  if (!fs.existsSync(dataDir)) return;
+
+  const cutoff = Date.now() - ROUTE_KML_RETENTION_HOURS * 60 * 60 * 1000;
+  fs.readdirSync(dataDir)
+    .filter((file) => /^route.*\.kml$/i.test(file))
+    .forEach((file) => {
+      const filePath = path.join(dataDir, file);
+      const stats = fs.statSync(filePath);
+      if (stats.isFile() && stats.mtimeMs < cutoff) {
+        fs.unlinkSync(filePath);
+      }
+    });
 }
 
 function jobAuthHeader() {
@@ -171,16 +246,14 @@ async function waitForJob(jobId) {
 }
 
 function extractKmlFiles(zipBuffer) {
-  const dataDir = path.join(__dirname, 'data');
-  fs.mkdirSync(dataDir, {recursive: true});
   const zip = new AdmZip(zipBuffer);
   const writtenFiles = [];
   zip.getEntries()
     .filter((entry) => !entry.isDirectory && entry.entryName.toLowerCase().endsWith('.kml'))
     .forEach((entry) => {
-      const outputPath = uniqueDataPath(dataDir, path.basename(entry.entryName));
-      fs.writeFileSync(outputPath, entry.getData());
-      writtenFiles.push(path.basename(outputPath));
+      const filename = path.basename(entry.entryName);
+      const content = entry.getData().toString('utf8');
+      writtenFiles.push(writeKmlFile(filename, content));
     });
   if (!writtenFiles.length) throw new Error('Downloaded zip did not contain any KML files');
   return writtenFiles;
@@ -503,8 +576,16 @@ function buildNoProfileNavigationState() {
 let activeProfileId = null;
 const navigationState = structuredClone(fallbackNavigationState);
 
-app.use(express.json());
+app.use(express.json({limit: MAX_KML_UPLOAD_BYTES + 1024}));
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    gmapImportEnabled: Boolean(GMAP_JOBS_PASSWORD),
+    maxKmlUploadBytes: MAX_KML_UPLOAD_BYTES,
+    routeKmlRetentionHours: ROUTE_KML_RETENTION_HOURS,
+  });
+});
 
 app.get('/api/navigation', (req, res) => {
   const kmlProfiles = parseKmlProfiles();
@@ -560,6 +641,37 @@ app.post('/api/gmap/import', async (req, res) => {
   }
 });
 
+app.post('/api/kml/upload', (req, res) => {
+  try {
+    const filename = String(req.body?.filename || '').trim();
+    const content = String(req.body?.content || '');
+    const file = writeKmlFile(filename, content, {preserveUploadName: true});
+    activeProfileId = file;
+    res.json({file, profile: {id: file, name: file}});
+  } catch (error) {
+    res.status(400).json({error: error.message});
+  }
+});
+
+app.delete('/api/kml/:filename', (req, res) => {
+  try {
+    const {safeName, filePath} = dataKmlPath(req.params.filename);
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      res.status(404).json({error: 'KML profile not found'});
+      return;
+    }
+
+    fs.unlinkSync(filePath);
+    if (activeProfileId === safeName) {
+      activeProfileId = null;
+      Object.assign(navigationState, buildNoProfileNavigationState());
+    }
+    res.json({deleted: safeName});
+  } catch (error) {
+    res.status(400).json({error: error.message});
+  }
+});
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -568,6 +680,22 @@ const httpsOptions = {
   cert: fs.readFileSync(HTTPS_CERT_PATH),
   key: fs.readFileSync(HTTPS_KEY_PATH),
 };
+
+try {
+  cleanupRouteKmlFiles();
+} catch (error) {
+  console.warn('Route KML cleanup failed', error);
+}
+
+if (Number.isFinite(ROUTE_KML_CLEANUP_INTERVAL_MS) && ROUTE_KML_CLEANUP_INTERVAL_MS > 0) {
+  setInterval(() => {
+    try {
+      cleanupRouteKmlFiles();
+    } catch (error) {
+      console.warn('Route KML cleanup failed', error);
+    }
+  }, ROUTE_KML_CLEANUP_INTERVAL_MS).unref();
+}
 
 https.createServer(httpsOptions, app).listen(PORT, () => {
   console.log(`ND web UI listening on https://0.0.0.0:${PORT}`);
