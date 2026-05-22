@@ -1,4 +1,5 @@
 const express = require('express');
+const AdmZip = require('adm-zip');
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
@@ -6,6 +7,10 @@ const app = express();
 const PORT = process.env.PORT || 8500;
 const HTTPS_CERT_PATH = process.env.HTTPS_CERT_PATH || path.join(__dirname, 'cert', 'server.crt');
 const HTTPS_KEY_PATH = process.env.HTTPS_KEY_PATH || path.join(__dirname, 'cert', 'server.key');
+const GMAP_JOBS_URL = process.env.GMAP_JOBS_URL || 'https://neb.pwbf.pw:8585';
+const GMAP_JOBS_USER = process.env.GMAP_JOBS_USER || 'admin';
+const GMAP_JOBS_PASSWORD = process.env.GMAP_JOBS_PASSWORD || '';
+const GMAP_JOB_TIMEOUT_MS = Number(process.env.GMAP_JOB_TIMEOUT_MS || 180000);
 let navaidCsvCache = {mtimeMs: null, navaids: []};
 let airportCsvCache = {mtimeMs: null, airports: []};
 
@@ -52,6 +57,133 @@ function parseOptionalNumber(value) {
   if (value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function safeDataFilename(filename) {
+  return path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function uniqueDataPath(dataDir, filename) {
+  const parsed = path.parse(safeDataFilename(filename));
+  let candidate = `${parsed.name || 'route'}${parsed.ext || '.kml'}`;
+  let counter = 1;
+  while (fs.existsSync(path.join(dataDir, candidate))) {
+    candidate = `${parsed.name || 'route'}-${counter}${parsed.ext || '.kml'}`;
+    counter += 1;
+  }
+  return path.join(dataDir, candidate);
+}
+
+function jobAuthHeader() {
+  return `Basic ${Buffer.from(`${GMAP_JOBS_USER}:${GMAP_JOBS_PASSWORD}`).toString('base64')}`;
+}
+
+function jobRequest(method, requestPath, {headers = {}, body = null, binary = false} = {}) {
+  const url = new URL(requestPath, GMAP_JOBS_URL);
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      method,
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: `${url.pathname}${url.search}`,
+      rejectUnauthorized: false,
+      headers: {
+        Authorization: jobAuthHeader(),
+        ...headers,
+      },
+    }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`Job API ${method} ${url.pathname} failed with ${response.statusCode}: ${buffer.toString('utf8')}`));
+          return;
+        }
+        if (binary) {
+          resolve(buffer);
+          return;
+        }
+        const text = buffer.toString('utf8');
+        try {
+          resolve(text ? JSON.parse(text) : {});
+        } catch (error) {
+          reject(new Error(`Job API returned invalid JSON: ${text}`));
+        }
+      });
+    });
+    request.on('error', reject);
+    if (body) request.write(body);
+    request.end();
+  });
+}
+
+function multipartBody(fields) {
+  const boundary = `----webnd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const chunks = [];
+  Object.entries(fields).forEach(([name, value]) => {
+    chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+  });
+  chunks.push(Buffer.from(`--${boundary}--\r\n`));
+  const body = Buffer.concat(chunks);
+  return {body, boundary};
+}
+
+function jobIdFromResponse(response) {
+  return response.job_id || response.id || response.uuid || response.job?.id || response.job?.job_id;
+}
+
+function jobStatus(job) {
+  return String(job.status || job.state || job.phase || '').toLowerCase();
+}
+
+async function submitGmapJob(url) {
+  const metadata = JSON.stringify({url, output_filename: 'route-kml.zip'});
+  const {body, boundary} = multipartBody({capability: 'gmap2kml', metadata});
+  const response = await jobRequest('POST', '/jobs', {
+    body,
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Content-Length': body.length,
+    },
+  });
+  const jobId = jobIdFromResponse(response);
+  if (!jobId) throw new Error('Job API did not return a job id');
+  return jobId;
+}
+
+async function waitForJob(jobId) {
+  const start = Date.now();
+  while (Date.now() - start < GMAP_JOB_TIMEOUT_MS) {
+    const job = await jobRequest('GET', `/jobs/${encodeURIComponent(jobId)}`);
+    const status = jobStatus(job);
+    if (['complete', 'completed', 'done', 'success', 'succeeded'].includes(status)) return job;
+    if (['failed', 'error', 'cancelled', 'canceled', 'dangled'].includes(status)) {
+      throw new Error(`Google Maps import job ${jobId} ended with status ${status}`);
+    }
+    await sleep(2000);
+  }
+  throw new Error(`Google Maps import job ${jobId} timed out`);
+}
+
+function extractKmlFiles(zipBuffer) {
+  const dataDir = path.join(__dirname, 'data');
+  fs.mkdirSync(dataDir, {recursive: true});
+  const zip = new AdmZip(zipBuffer);
+  const writtenFiles = [];
+  zip.getEntries()
+    .filter((entry) => !entry.isDirectory && entry.entryName.toLowerCase().endsWith('.kml'))
+    .forEach((entry) => {
+      const outputPath = uniqueDataPath(dataDir, path.basename(entry.entryName));
+      fs.writeFileSync(outputPath, entry.getData());
+      writtenFiles.push(path.basename(outputPath));
+    });
+  if (!writtenFiles.length) throw new Error('Downloaded zip did not contain any KML files');
+  return writtenFiles;
 }
 
 function loadNavaidsCsv(dataDir) {
@@ -403,6 +535,29 @@ app.get('/api/profiles', (req, res) => {
 app.post('/api/navigation', (req, res) => {
   Object.assign(navigationState, req.body);
   res.json(navigationState);
+});
+
+app.post('/api/gmap/import', async (req, res) => {
+  try {
+    const url = String(req.body?.url || '').trim();
+    if (!url || !/^https:\/\/(maps\.app\.goo\.gl|www\.google\.com\/maps|maps\.google\.com)\//i.test(url)) {
+      res.status(400).json({error: 'A valid Google Maps URL is required'});
+      return;
+    }
+    if (!GMAP_JOBS_PASSWORD) {
+      res.status(500).json({error: 'GMAP_JOBS_PASSWORD is not configured on the server'});
+      return;
+    }
+
+    const jobId = await submitGmapJob(url);
+    const job = await waitForJob(jobId);
+    const zipBuffer = await jobRequest('GET', `/jobs/${encodeURIComponent(jobId)}/download`, {binary: true});
+    const files = extractKmlFiles(zipBuffer);
+    res.json({jobId, job, files, profiles: files.map((file) => ({id: file, name: file}))});
+  } catch (error) {
+    console.error('Google Maps import failed', error);
+    res.status(500).json({error: error.message});
+  }
 });
 
 app.get('/', (req, res) => {

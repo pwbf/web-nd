@@ -6,7 +6,10 @@ services:
       - "8500:8500"
     environment:
       PORT: 8500
+      GMAP_JOBS_URL: ${GMAP_JOBS_URL:-https://neb.pwbf.pw:8585}
+      GMAP_JOBS_USER: ${GMAP_JOBS_USER:-admin}
+      GMAP_JOBS_PASSWORD: ${GMAP_JOBS_PASSWORD:-}
     restart: unless-stopped
     volumes:
       - ./public:/usr/src/app/public:ro
-      - ./data:/usr/src/app/data:ro
+      - ./data:/usr/src/app/data

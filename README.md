@@ -78,7 +78,32 @@ POST /api/navigation
 Content-Type: application/json
 ```
 
+Import a Google Maps route URL through the backend job service:
+
+```bash
+POST /api/gmap/import
+Content-Type: application/json
+```
+
+```json
+{"url":"https://maps.app.goo.gl/example"}
+```
+
 The API is intentionally small so a future adapter can translate navigation sources, such as Google Maps navigation data, into route points, waypoints, aircraft position, heading, distance, and ETA.
+
+## Google Maps Import Configuration
+
+The Google Maps import UI submits the pasted URL to the WebND backend. The backend then creates a `gmap2kml` job, waits for completion, downloads the output zip, extracts KML files, and writes them into `data/`.
+
+Configure the backend with:
+
+```bash
+GMAP_JOBS_URL=https://neb.pwbf.pw:8585
+GMAP_JOBS_USER=admin
+GMAP_JOBS_PASSWORD=your-api-password
+```
+
+Do not put the job API password in browser-side code.
 
 ## Run Locally
 

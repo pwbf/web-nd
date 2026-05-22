@@ -91,6 +91,9 @@ const els = {
   controlsPanel: document.querySelector('.controls'),
   controlsToggle: document.getElementById('controlsToggle'),
   profile: document.getElementById('profileControl'),
+  gmapUrl: document.getElementById('gmapUrlControl'),
+  gmapImport: document.getElementById('gmapImportButton'),
+  gmapImportStatus: document.getElementById('gmapImportStatus'),
   range: document.getElementById('rangeControl'),
   navaidRange: document.getElementById('navaidRangeControl'),
   showVor: document.getElementById('showVorControl'),
@@ -428,6 +431,41 @@ async function loadNavigation(profileId = '') {
     mergeNavigation(await response.json());
   } catch (error) {
     console.warn('Using local navigation state', error);
+  }
+}
+
+async function importGoogleMapsRoute() {
+  const url = els.gmapUrl.value.trim();
+  if (!url) {
+    els.gmapImportStatus.textContent = 'Paste a Google Maps URL';
+    return;
+  }
+
+  els.gmapImport.disabled = true;
+  els.gmapImportStatus.textContent = 'Submitting import job...';
+  try {
+    const response = await fetch('/api/gmap/import', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Import failed');
+
+    await loadProfiles();
+    const [firstFile] = result.files || [];
+    if (firstFile) {
+      els.profile.value = firstFile;
+      await loadNavigation(firstFile);
+      baselineState = structuredClone(state);
+    }
+    els.gmapImportStatus.textContent = firstFile ? `Imported ${firstFile}` : 'Import complete';
+    debugLog(`Google Maps import job ${result.jobId} complete`);
+  } catch (error) {
+    console.warn('Google Maps import failed', error);
+    els.gmapImportStatus.textContent = error.message;
+  } finally {
+    els.gmapImport.disabled = false;
   }
 }
 
@@ -1421,6 +1459,14 @@ els.showOtherNavaid.addEventListener('change', (event) => updateNavaidTypeFilter
 els.showAirports.addEventListener('change', (event) => {
   state.showAirports = event.target.checked;
   visibleAirportTableSignature = '';
+});
+
+els.gmapImport.addEventListener('click', importGoogleMapsRoute);
+els.gmapUrl.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    importGoogleMapsRoute();
+  }
 });
 
 els.profile.addEventListener('change', async (event) => {

@@ -108,6 +108,12 @@
             <label for="profileControl">KML Profile</label>
             <select id="profileControl"></select>
           </div>
+          <div class="control-row">
+            <label for="gmapUrlControl">Google Maps URL</label>
+            <input id="gmapUrlControl" type="url" placeholder="https://maps.app.goo.gl/..." />
+            <button type="button" id="gmapImportButton">Import KML</button>
+            <output id="gmapImportStatus" for="gmapUrlControl"></output>
+          </div>
           <div class="control-grid">
             <div class="control-row">
               <label for="rangeControl">Range</label>
@@ -248,7 +254,7 @@
       </div>
     </aside>
   </main>
-  <footer class="site-footer">WebND project v1.2 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
+  <footer class="site-footer">WebND project v1.3 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
   <script src="app.js"></script>
 </body>
 </html>

@@ -324,7 +324,9 @@ button {
 }
 
 select,
-input[type="number"] {
+input[type="number"],
+input[type="url"],
+input[type="text"] {
   width: 100%;
   min-height: 34px;
   color: #f2f6f8;
@@ -332,6 +334,10 @@ input[type="number"] {
   border: 1px solid #333b45;
   border-radius: 6px;
   padding: 0 10px;
+}
+
+input::placeholder {
+  color: #66707b;
 }
 
 input[type="range"] {
