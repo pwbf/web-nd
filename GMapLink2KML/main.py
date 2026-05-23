@@ -2,12 +2,15 @@ import sys
 import html
 import json
 import math
+import random
 import secrets
 import string
+import time
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
 
 KML_NS = "http://www.opengis.net/kml/2.2"
 GX_NS = "http://www.google.com/kml/ext/2.2"
@@ -19,6 +22,20 @@ PRIMARY_ROUTE_INDEX = 0
 COORDINATE_SCALE = 10000000
 ROUTE_SIMPLIFY_RATIO = 0.05
 MIN_SIMPLIFIED_POINTS = 2
+REQUEST_TIMEOUT_SECONDS = 20
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+    "DNT": "1",
+    "Pragma": "no-cache",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 
 ET.register_namespace("gx", GX_NS)
@@ -28,6 +45,39 @@ ET.register_namespace("", KML_NS)
 
 def kml_tag(name):
     return f"{{{KML_NS}}}{name}"
+
+
+def is_allowed_google_host(hostname):
+    host = (hostname or "").lower().rstrip(".")
+    return (
+        host == "google.com"
+        or host.endswith(".google.com")
+        or host == "goo.gl"
+        or host.endswith(".goo.gl")
+    )
+
+
+def validate_google_url(url):
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not is_allowed_google_host(parsed.hostname):
+        raise ValueError("URL must be an HTTPS Google Maps or goo.gl URL")
+    return url
+
+
+def polite_pause():
+    time.sleep(random.uniform(0.35, 1.1))
+
+
+def google_get(session, url, referer=None):
+    validate_google_url(url)
+    headers = dict(REQUEST_HEADERS)
+    if referer:
+        headers["Referer"] = referer
+    polite_pause()
+    response = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT_SECONDS, allow_redirects=True)
+    response.raise_for_status()
+    validate_google_url(response.url)
+    return response
 
 
 def format_coord(lat, lon):
@@ -339,7 +389,9 @@ if __name__ == "__main__":
         print(f"Wrote {output_path}")
         sys.exit(0)
 
-    redirect_web = requests.get(gmap_uri)
+    validate_google_url(gmap_uri)
+    session = requests.Session()
+    redirect_web = google_get(session, gmap_uri)
     soup = BeautifulSoup(redirect_web.text, "html.parser")
 
     tag = soup.find(
@@ -356,13 +408,14 @@ if __name__ == "__main__":
         sys.exit(1)
 
     decoded_uri = html.unescape(tag.get("href"))
-    next_stage_uri = "https://www.google.com" + decoded_uri
+    next_stage_uri = urljoin("https://www.google.com", decoded_uri)
+    validate_google_url(next_stage_uri)
     next_stage_uri = next_stage_uri.replace(
         "&hl=zh-TW",
         "&hl=en-us"
     )
 
-    nav_info = requests.get(next_stage_uri)
+    nav_info = google_get(session, next_stage_uri, referer=redirect_web.url)
     raw = nav_info.text
     if raw.startswith(")]}'"):
         raw = raw[4:]

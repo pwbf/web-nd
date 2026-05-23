@@ -170,6 +170,7 @@ function setControlsCollapsed(collapsed) {
   els.controlsToggle.setAttribute('aria-expanded', String(!collapsed));
   if (els.mobileControlsToggle) {
     els.mobileControlsToggle.textContent = label;
+    els.mobileControlsToggle.classList.toggle('open', !collapsed);
     els.mobileControlsToggle.setAttribute('aria-expanded', String(!collapsed));
   }
 }
@@ -531,13 +532,25 @@ async function loadServerConfig() {
 }
 
 async function importGoogleMapsRoute() {
+  if (els.gmapImport.dataset.state === 'available') {
+    els.gmapImport.dataset.state = 'idle';
+    els.gmapImport.setAttribute('aria-pressed', 'false');
+    els.gmapUrl.value = '';
+    els.gmapImportStatus.textContent = '';
+    return;
+  }
+
   const url = els.gmapUrl.value.trim();
   if (!url) {
     els.gmapImportStatus.textContent = 'Paste a Google Maps URL';
+    els.gmapImport.dataset.state = 'fault';
+    els.gmapImport.setAttribute('aria-pressed', 'false');
     return;
   }
 
   els.gmapImport.disabled = true;
+  els.gmapImport.dataset.state = 'active';
+  els.gmapImport.setAttribute('aria-pressed', 'true');
   els.gmapImportStatus.textContent = serverConfig.gmapImportProvider === 'local'
     ? 'Running local GMapLink2KML...'
     : 'Submitting import job...';
@@ -558,7 +571,8 @@ async function importGoogleMapsRoute() {
       baselineState = structuredClone(state);
       syncKmlProfileActions();
     }
-    els.gmapUrl.value = '';
+    els.gmapImport.dataset.state = 'available';
+    els.gmapImport.setAttribute('aria-pressed', 'true');
     els.gmapImportStatus.textContent = firstFile ? `Imported ${firstFile}` : 'Import complete';
     showToast(firstFile ? `Imported and loaded ${firstFile}` : 'Google Maps import complete');
     debugLog(result.provider === 'local'
@@ -566,6 +580,9 @@ async function importGoogleMapsRoute() {
       : `Google Maps import job ${result.jobId} complete`);
   } catch (error) {
     console.warn('Google Maps import failed', error);
+    els.gmapImport.dataset.state = 'fault';
+    els.gmapImport.setAttribute('aria-pressed', 'false');
+    els.gmapUrl.value = '';
     els.gmapImportStatus.textContent = error.message;
   } finally {
     els.gmapImport.disabled = false;
@@ -573,17 +590,32 @@ async function importGoogleMapsRoute() {
 }
 
 async function uploadKmlProfile() {
+  if (els.kmlUploadButton.dataset.state === 'available') {
+    els.kmlUploadButton.dataset.state = 'idle';
+    els.kmlUploadButton.setAttribute('aria-pressed', 'false');
+    els.kmlUpload.value = '';
+    els.kmlUploadStatus.textContent = '';
+    return;
+  }
+
   const [file] = els.kmlUpload.files || [];
   if (!file) {
     els.kmlUploadStatus.textContent = 'Choose a KML file';
+    els.kmlUploadButton.dataset.state = 'fault';
+    els.kmlUploadButton.setAttribute('aria-pressed', 'false');
     return;
   }
   if (!file.name.toLowerCase().endsWith('.kml')) {
     els.kmlUploadStatus.textContent = 'Only .kml files are allowed';
+    els.kmlUploadButton.dataset.state = 'fault';
+    els.kmlUploadButton.setAttribute('aria-pressed', 'false');
+    els.kmlUpload.value = '';
     return;
   }
 
   els.kmlUploadButton.disabled = true;
+  els.kmlUploadButton.dataset.state = 'active';
+  els.kmlUploadButton.setAttribute('aria-pressed', 'true');
   els.kmlUploadStatus.textContent = 'Uploading KML...';
   try {
     const content = await file.text();
@@ -603,11 +635,15 @@ async function uploadKmlProfile() {
     els.profile.value = result.file;
     await loadNavigation(result.file);
     baselineState = structuredClone(state);
-    els.kmlUpload.value = '';
+    els.kmlUploadButton.dataset.state = 'available';
+    els.kmlUploadButton.setAttribute('aria-pressed', 'true');
     els.kmlUploadStatus.textContent = `Uploaded ${result.file}`;
     debugLog(`KML profile uploaded: ${result.file}`);
   } catch (error) {
     console.warn('KML upload failed', error);
+    els.kmlUploadButton.dataset.state = 'fault';
+    els.kmlUploadButton.setAttribute('aria-pressed', 'false');
+    els.kmlUpload.value = '';
     els.kmlUploadStatus.textContent = error.message;
   } finally {
     els.kmlUploadButton.disabled = false;
@@ -1683,8 +1719,28 @@ els.gmapUrl.addEventListener('keydown', (event) => {
     importGoogleMapsRoute();
   }
 });
+els.gmapUrl.addEventListener('input', () => {
+  if (els.gmapImport.dataset.state === 'fault' || els.gmapImport.dataset.state === 'available') {
+    els.gmapImport.dataset.state = 'idle';
+    els.gmapImport.setAttribute('aria-pressed', 'false');
+  }
+});
 els.kmlUploadButton.addEventListener('click', uploadKmlProfile);
+els.kmlUpload.addEventListener('change', () => {
+  if (els.kmlUploadButton.dataset.state === 'fault' || els.kmlUploadButton.dataset.state === 'available') {
+    els.kmlUploadButton.dataset.state = 'idle';
+    els.kmlUploadButton.setAttribute('aria-pressed', 'false');
+  }
+});
 els.kmlDeleteButton.addEventListener('click', deleteSelectedKmlProfile);
+els.kmlDeleteButton.addEventListener('pointerdown', () => {
+  els.kmlDeleteButton.classList.add('is-pressing');
+});
+['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach((eventName) => {
+  els.kmlDeleteButton.addEventListener(eventName, () => {
+    els.kmlDeleteButton.classList.remove('is-pressing');
+  });
+});
 
 els.profile.addEventListener('change', async (event) => {
   stopLocationWatch();
@@ -1706,6 +1762,14 @@ els.controlsToggle.addEventListener('click', () => {
 
 els.mobileControlsToggle.addEventListener('click', () => {
   setControlsCollapsed(!els.controlsPanel.classList.contains('collapsed'));
+});
+
+document.addEventListener('pointerdown', (event) => {
+  if (els.controlsPanel.classList.contains('collapsed')) return;
+  if (els.controlsPanel.contains(event.target)) return;
+  if (els.mobileControlsToggle?.contains(event.target)) return;
+  if (els.controlsToggle?.contains(event.target)) return;
+  setControlsCollapsed(true);
 });
 
 els.unit.addEventListener('change', () => {
@@ -1798,10 +1862,6 @@ els.location.addEventListener('click', () => {
   } else {
     startLocationWatch();
   }
-});
-
-els.fakeHeading.addEventListener('change', () => {
-  debugLog(`Fake heading ${els.fakeHeading.checked ? 'enabled' : 'disabled'}`);
 });
 
 els.recenter.addEventListener('click', () => {

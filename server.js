@@ -1,5 +1,6 @@
 const express = require('express');
 const AdmZip = require('adm-zip');
+const crypto = require('crypto');
 const {spawn} = require('child_process');
 const fs = require('fs');
 const https = require('https');
@@ -19,8 +20,137 @@ const GMAP_LOCAL_TIMEOUT_MS = Number(process.env.GMAP_LOCAL_TIMEOUT_MS || 180000
 const MAX_KML_UPLOAD_BYTES = Number(process.env.MAX_KML_UPLOAD_BYTES || 10 * 1024 * 1024);
 const ROUTE_KML_RETENTION_HOURS = Number(process.env.ROUTE_KML_RETENTION_HOURS || 24);
 const ROUTE_KML_CLEANUP_INTERVAL_MS = Number(process.env.ROUTE_KML_CLEANUP_INTERVAL_MS || 60 * 60 * 1000);
+const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'webnd_client_id';
+const SESSION_STORE_FILE = process.env.SESSION_STORE_FILE || path.join(__dirname, 'data', '.webnd-sessions.json');
 let navaidCsvCache = {mtimeMs: null, navaids: []};
 let airportCsvCache = {mtimeMs: null, airports: []};
+
+function routeKmlRetentionMs() {
+  if (!Number.isFinite(ROUTE_KML_RETENTION_HOURS) || ROUTE_KML_RETENTION_HOURS <= 0) return null;
+  return ROUTE_KML_RETENTION_HOURS * 60 * 60 * 1000;
+}
+
+function loadSessionStore() {
+  try {
+    if (!fs.existsSync(SESSION_STORE_FILE)) return {sessions: {}, files: {}};
+    const parsed = JSON.parse(fs.readFileSync(SESSION_STORE_FILE, 'utf8'));
+    return {
+      sessions: parsed && typeof parsed.sessions === 'object' && parsed.sessions ? parsed.sessions : {},
+      files: parsed && typeof parsed.files === 'object' && parsed.files ? parsed.files : {},
+    };
+  } catch (error) {
+    console.warn('Client session store could not be loaded; starting with an empty store', error);
+    return {sessions: {}, files: {}};
+  }
+}
+
+let sessionStore = loadSessionStore();
+
+function saveSessionStore() {
+  const storeDir = path.dirname(SESSION_STORE_FILE);
+  fs.mkdirSync(storeDir, {recursive: true});
+  const tempPath = `${SESSION_STORE_FILE}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(sessionStore, null, 2), {mode: 0o644});
+  fs.renameSync(tempPath, SESSION_STORE_FILE);
+  fs.chmodSync(SESSION_STORE_FILE, 0o644);
+}
+
+function parseCookies(cookieHeader = '') {
+  const decode = (value) => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+  return cookieHeader.split(';').reduce((cookies, pair) => {
+    const [rawName, ...rawValue] = pair.trim().split('=');
+    if (!rawName) return cookies;
+    cookies[decode(rawName)] = decode(rawValue.join('=') || '');
+    return cookies;
+  }, {});
+}
+
+function validSessionId(value) {
+  return /^[a-f0-9-]{36}$/i.test(String(value || ''));
+}
+
+function touchClientSession(req, res, next) {
+  const cookies = parseCookies(req.headers.cookie || '');
+  const requestedId = cookies[SESSION_COOKIE_NAME];
+  const sessionId = validSessionId(requestedId) ? requestedId : crypto.randomUUID();
+  const now = new Date().toISOString();
+  const session = sessionStore.sessions[sessionId] || {
+    id: sessionId,
+    createdAt: now,
+    uploads: 0,
+    imports: 0,
+  };
+
+  session.lastActivity = now;
+  session.userAgent = String(req.headers['user-agent'] || '').slice(0, 300);
+  sessionStore.sessions[sessionId] = session;
+  req.clientSessionId = sessionId;
+  res.cookie(SESSION_COOKIE_NAME, sessionId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    maxAge: routeKmlRetentionMs() || undefined,
+  });
+
+  try {
+    saveSessionStore();
+  } catch (error) {
+    console.warn('Client session store could not be saved', error);
+  }
+  next();
+}
+
+function recordKmlOwner(filename, sessionId, source) {
+  const safeName = safeDataFilename(filename);
+  if (!safeName || !sessionId) return;
+  const now = new Date().toISOString();
+  const session = sessionStore.sessions[sessionId];
+  sessionStore.files[safeName] = {
+    filename: safeName,
+    sessionId,
+    source,
+    createdAt: sessionStore.files[safeName]?.createdAt || now,
+    updatedAt: now,
+  };
+  if (session) {
+    if (source === 'upload') session.uploads = (session.uploads || 0) + 1;
+    if (source === 'google-maps-local' || source === 'google-maps-nebula') session.imports = (session.imports || 0) + 1;
+  }
+  try {
+    saveSessionStore();
+  } catch (error) {
+    console.warn('KML owner metadata could not be saved', error);
+  }
+}
+
+function forgetKmlOwner(filename) {
+  const safeName = safeDataFilename(filename);
+  if (!safeName || !sessionStore.files[safeName]) return;
+  delete sessionStore.files[safeName];
+  try {
+    saveSessionStore();
+  } catch (error) {
+    console.warn('KML owner metadata could not be saved', error);
+  }
+}
+
+function kmlOwnerRecord(filename) {
+  return sessionStore.files[safeDataFilename(filename)] || null;
+}
+
+function isKmlAccessibleToSession(filename, sessionId) {
+  const owner = kmlOwnerRecord(filename);
+  if (!owner) {
+    return !/^route.*\.kml$/i.test(filename) && !/^uploaded-.*\.kml$/i.test(filename);
+  }
+  return owner.sessionId === sessionId;
+}
 
 function decodeXml(text) {
   return text
@@ -142,20 +272,44 @@ function writeKmlFile(filename, content, {preserveUploadName = false} = {}) {
 }
 
 function cleanupRouteKmlFiles() {
-  if (!Number.isFinite(ROUTE_KML_RETENTION_HOURS) || ROUTE_KML_RETENTION_HOURS <= 0) return;
+  const retentionMs = routeKmlRetentionMs();
+  if (!retentionMs) return;
   const dataDir = path.join(__dirname, 'data');
-  if (!fs.existsSync(dataDir)) return;
+  const cutoff = Date.now() - retentionMs;
+  let storeChanged = false;
 
-  const cutoff = Date.now() - ROUTE_KML_RETENTION_HOURS * 60 * 60 * 1000;
-  fs.readdirSync(dataDir)
-    .filter((file) => /^route.*\.kml$/i.test(file))
-    .forEach((file) => {
-      const filePath = path.join(dataDir, file);
-      const stats = fs.statSync(filePath);
-      if (stats.isFile() && stats.mtimeMs < cutoff) {
-        fs.unlinkSync(filePath);
+  if (fs.existsSync(dataDir)) {
+    fs.readdirSync(dataDir)
+      .filter((file) => /^route.*\.kml$/i.test(file))
+      .forEach((file) => {
+        const filePath = path.join(dataDir, file);
+        const stats = fs.statSync(filePath);
+        if (stats.isFile() && stats.mtimeMs < cutoff) {
+          fs.unlinkSync(filePath);
+          if (sessionStore.files[file]) {
+            delete sessionStore.files[file];
+            storeChanged = true;
+          }
+        }
+      });
+
+    Object.keys(sessionStore.files).forEach((file) => {
+      if (!fs.existsSync(path.join(dataDir, file))) {
+        delete sessionStore.files[file];
+        storeChanged = true;
       }
     });
+  }
+
+  Object.entries(sessionStore.sessions).forEach(([sessionId, session]) => {
+    const lastActivity = Date.parse(session.lastActivity || session.createdAt || 0);
+    if (!Number.isFinite(lastActivity) || lastActivity < cutoff) {
+      delete sessionStore.sessions[sessionId];
+      storeChanged = true;
+    }
+  });
+
+  if (storeChanged) saveSessionStore();
 }
 
 function nebulaGmapImportConfigured() {
@@ -165,6 +319,20 @@ function nebulaGmapImportConfigured() {
 function localGmapImportAvailable() {
   return fs.existsSync(path.join(GMAP_LOCAL_TOOL_DIR, 'main.py'))
     && fs.existsSync(path.join(GMAP_LOCAL_TOOL_DIR, 'sample.kml'));
+}
+
+function isAllowedGoogleMapsUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:') return false;
+    return host === 'google.com'
+      || host.endsWith('.google.com')
+      || host === 'goo.gl'
+      || host.endsWith('.goo.gl');
+  } catch {
+    return false;
+  }
 }
 
 function copyLocalGmapToolFile(workDir, filename) {
@@ -602,7 +770,7 @@ function parseKmlFile(dataDir, file) {
   };
 }
 
-function parseKmlProfiles() {
+function parseKmlProfiles(sessionId = null) {
   const dataDir = path.join(__dirname, 'data');
   if (!fs.existsSync(dataDir)) {
     return [];
@@ -610,6 +778,7 @@ function parseKmlProfiles() {
 
   return fs.readdirSync(dataDir)
     .filter((file) => file.toLowerCase().endsWith('.kml'))
+    .filter((file) => isKmlAccessibleToSession(file, sessionId))
     .sort((a, b) => a.localeCompare(b))
     .map((file) => {
       const navigation = parseKmlFile(dataDir, file);
@@ -667,6 +836,7 @@ function buildNoProfileNavigationState() {
 let activeProfileId = null;
 const navigationState = structuredClone(fallbackNavigationState);
 
+app.use(touchClientSession);
 app.use(express.json({limit: MAX_KML_UPLOAD_BYTES + 1024}));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -678,11 +848,12 @@ app.get('/api/config', (req, res) => {
     gmapImportProvider: nebulaConfigured ? 'nebula' : localAvailable ? 'local' : null,
     maxKmlUploadBytes: MAX_KML_UPLOAD_BYTES,
     routeKmlRetentionHours: ROUTE_KML_RETENTION_HOURS,
+    clientSessionId: req.clientSessionId,
   });
 });
 
 app.get('/api/navigation', (req, res) => {
-  const kmlProfiles = parseKmlProfiles();
+  const kmlProfiles = parseKmlProfiles(req.clientSessionId);
   const requestedProfileId = req.query.profile || null;
   const profile = kmlProfiles.find((nextProfile) => nextProfile.id === requestedProfileId);
   if (profile) {
@@ -696,7 +867,7 @@ app.get('/api/navigation', (req, res) => {
 });
 
 app.get('/api/profiles', (req, res) => {
-  const kmlProfiles = parseKmlProfiles();
+  const kmlProfiles = parseKmlProfiles(req.clientSessionId);
   if (!kmlProfiles.some((profile) => profile.id === activeProfileId)) {
     activeProfileId = null;
   }
@@ -715,12 +886,13 @@ app.post('/api/navigation', (req, res) => {
 app.post('/api/gmap/import', async (req, res) => {
   try {
     const url = String(req.body?.url || '').trim();
-    if (!url || !/^https:\/\/(maps\.app\.goo\.gl|www\.google\.com\/maps|maps\.google\.com)\//i.test(url)) {
+    if (!url || !isAllowedGoogleMapsUrl(url)) {
       res.status(400).json({error: 'A valid Google Maps URL is required'});
       return;
     }
     if (!nebulaGmapImportConfigured()) {
       const result = await importGmapWithLocalTool(url);
+      result.files.forEach((file) => recordKmlOwner(file, req.clientSessionId, 'google-maps-local'));
       res.json(result);
       return;
     }
@@ -729,6 +901,7 @@ app.post('/api/gmap/import', async (req, res) => {
     const job = await waitForJob(jobId);
     const zipBuffer = await jobRequest('GET', `/jobs/${encodeURIComponent(jobId)}/download`, {binary: true});
     const files = extractKmlFiles(zipBuffer);
+    files.forEach((file) => recordKmlOwner(file, req.clientSessionId, 'google-maps-nebula'));
     const [firstFile] = files;
     if (firstFile) activeProfileId = firstFile;
     res.json({provider: 'nebula', jobId, job, files, profiles: files.map((file) => ({id: file, name: file}))});
@@ -743,6 +916,7 @@ app.post('/api/kml/upload', (req, res) => {
     const filename = String(req.body?.filename || '').trim();
     const content = String(req.body?.content || '');
     const file = writeKmlFile(filename, content, {preserveUploadName: true});
+    recordKmlOwner(file, req.clientSessionId, 'upload');
     activeProfileId = file;
     res.json({file, profile: {id: file, name: file}});
   } catch (error) {
@@ -753,12 +927,17 @@ app.post('/api/kml/upload', (req, res) => {
 app.delete('/api/kml/:filename', (req, res) => {
   try {
     const {safeName, filePath} = dataKmlPath(req.params.filename);
+    if (!isKmlAccessibleToSession(safeName, req.clientSessionId)) {
+      res.status(403).json({error: 'KML profile belongs to another client session'});
+      return;
+    }
     if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
       res.status(404).json({error: 'KML profile not found'});
       return;
     }
 
     fs.unlinkSync(filePath);
+    forgetKmlOwner(safeName);
     if (activeProfileId === safeName) {
       activeProfileId = null;
       Object.assign(navigationState, buildNoProfileNavigationState());

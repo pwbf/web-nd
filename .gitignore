@@ -1,4 +1,5 @@
 *.kml
+data/.webnd-sessions.json*
 .codex
 .agents
 cert

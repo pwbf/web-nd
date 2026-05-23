@@ -10,6 +10,7 @@ The display is pilot-centric and forward-looking. It supports ARC, ROSE, and PLA
 - ARC-mode half-circle compass and range ring presentation
 - KML route profile loading from `data/*.kml`
 - Browser KML upload with server-side filename and content validation
+- HTTP-only client session cookie for tracing uploaded and generated KML ownership
 - Manual latitude/longitude input
 - Browser GPS support with temporary `GPS PRIMARY` annunciation
 - Route progress slider and play/pause simulation
@@ -145,12 +146,16 @@ Uploaded KML files are written into `data/` after filename sanitization and basi
 
 KML files created by Google Maps import are considered temporary when their name matches `route*.kml`. They are removed after 24 hours by default. User-uploaded KML files are preserved, including uploads originally named `route*.kml`, which are renamed with an `uploaded-` prefix.
 
+Each browser receives an HTTP-only `webnd_client_id` cookie. The backend records which client session uploaded or generated each KML file in `data/.webnd-sessions.json`. Expired client sessions are cleaned during the same rotation pass that removes old `route*.kml` files.
+
 Retention settings:
 
 ```bash
 MAX_KML_UPLOAD_BYTES=10485760
 ROUTE_KML_RETENTION_HOURS=24
 ROUTE_KML_CLEANUP_INTERVAL_MS=3600000
+SESSION_COOKIE_NAME=webnd_client_id
+SESSION_STORE_FILE=/usr/src/app/data/.webnd-sessions.json
 ```
 
 ## Run Locally

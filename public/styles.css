@@ -47,7 +47,7 @@ body {
   border: 1px solid var(--green);
   border-radius: 6px;
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.35;
   text-shadow: 0 0 5px rgb(0 255 59 / 55%);
 }
@@ -58,7 +58,8 @@ body {
 
 .mobile-controls-toggle {
   position: fixed;
-  right: 14px;
+  left: 14px;
+  right: auto;
   bottom: 14px;
   z-index: 40;
   display: block;
@@ -68,6 +69,11 @@ body {
   border: 1px solid var(--green);
   border-radius: 6px;
   text-shadow: 0 0 5px rgb(0 255 59 / 55%);
+  transition: left 180ms ease, transform 180ms ease;
+}
+
+.mobile-controls-toggle.open {
+  left: min(calc(86vw + 14px), 374px);
 }
 
 .display-column {
@@ -660,7 +666,7 @@ button.active {
   color: var(--white);
   border: 2px solid var(--white);
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1;
   text-shadow: 0 0 4px rgb(255 255 255 / 35%);
@@ -676,6 +682,187 @@ button.active {
 .check-row input:focus-visible + span::before {
   outline: 2px solid var(--cyan);
   outline-offset: 2px;
+}
+
+.switch-button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  padding: 5px 0 0;
+  color: #dfe7ea;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+}
+
+.switch-button:hover {
+  border-color: transparent;
+}
+
+.switch-button::before {
+  content: "";
+  grid-column: 1;
+  width: 54px;
+  height: 54px;
+  background: #020304;
+  border: 2px solid var(--white);
+  border-radius: 10px;
+  box-shadow: inset 0 0 8px rgb(255 255 255 / 12%);
+}
+
+.switch-button::after {
+  content: "";
+  position: absolute;
+  top: 16px;
+  left: 0;
+  width: 62px;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 0 5px rgb(0 255 59 / 65%);
+}
+
+.switch-button span {
+  grid-column: 2;
+}
+
+.switch-button span::before {
+  content: "OFF";
+  position: absolute;
+  bottom: 10px;
+  left: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-height: 16px;
+  color: var(--white);
+  border: 2px solid var(--white);
+  border-radius: 3px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 0 4px rgb(255 255 255 / 35%);
+}
+
+.switch-button[data-state="active"] span::before,
+.switch-button[data-state="available"] span::before {
+  content: "ON";
+  color: var(--cyan);
+  border-color: var(--cyan);
+  text-shadow: 0 0 5px rgb(5 216 255 / 65%);
+}
+
+.switch-button[data-state="available"]::after {
+  content: "AVAL";
+}
+
+.switch-button[data-state="fault"]::after {
+  content: "FAULT";
+  color: var(--amber);
+  text-shadow: 0 0 5px rgb(227 199 0 / 65%);
+}
+
+.switch-button:focus-visible span::before {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+.push-button {
+  position: relative;
+  justify-self: start;
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 62px;
+  padding: 0;
+  color: #dfe7ea;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+}
+
+.push-button span {
+  grid-column: 2;
+  font-size: 13px;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.push-button::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 11px;
+  width: 40px;
+  height: 40px;
+  background:
+    radial-gradient(circle at 50% 50%, #3b3d40 0 15%, #111214 18% 34%, #4a4d50 38% 45%, #050607 51% 64%, #17191d 68% 100%);
+  border: 2px solid #0c0d10;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 5px rgb(255 255 255 / 12%),
+    inset 0 0 13px rgb(0 0 0 / 95%),
+    0 0 0 2px #302d2a,
+    0 2px 4px rgb(0 0 0 / 70%);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter 90ms ease;
+}
+
+.push-button::after {
+  content: "";
+  position: absolute;
+  left: 17px;
+  top: 21px;
+  width: 20px;
+  height: 20px;
+  background:
+    radial-gradient(circle at 45% 42%, #62666a 0 12%, #282b2f 34%, #08090b 70%);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 6px rgb(0 0 0 / 80%),
+    0 0 3px rgb(255 255 255 / 10%);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter 90ms ease;
+}
+
+.push-button:hover {
+  border-color: transparent;
+}
+
+.push-button:active::before,
+.push-button.is-pressing::before {
+  transform: translateY(3px) scale(0.96);
+  box-shadow:
+    inset 0 0 8px rgb(0 0 0 / 95%),
+    0 0 0 2px #211f1e,
+    0 1px 2px rgb(0 0 0 / 80%);
+  filter: brightness(0.78);
+}
+
+.push-button:active::after,
+.push-button.is-pressing::after {
+  transform: translateY(3px) scale(0.92);
+  box-shadow:
+    inset 0 0 8px rgb(0 0 0 / 95%);
+  filter: brightness(0.72);
+}
+
+.push-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.push-button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
 }
 
 .check-grid {

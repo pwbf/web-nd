@@ -158,41 +158,11 @@
             <button type="button" id="playButton">Play</button>
             <button type="button" id="recenterButton">Reset</button>
           </div>
-          <label class="check-row" for="fakeHeadingControl">
-            <input id="fakeHeadingControl" type="checkbox" />
-            <span>Fake Heading</span>
-          </label>
           <div class="control-row">
             <label for="gpsHeadingMinSpeedControl">GPS Heading Min Speed</label>
             <input id="gpsHeadingMinSpeedControl" type="range" min="0" max="5" step="0.2" value="2" />
             <output id="gpsHeadingMinSpeedReadout" for="gpsHeadingMinSpeedControl">2.0 m/s</output>
           </div>
-        </details>
-
-        <details class="control-section">
-          <summary>Profile</summary>
-          <div class="control-row">
-            <label for="profileControl">KML Profile</label>
-            <select id="profileControl"></select>
-            <button type="button" id="kmlDeleteButton">Delete Selected KML</button>
-            <output id="kmlProfileStatus" for="profileControl"></output>
-          </div>
-          <div class="control-row" id="gmapImportRow" hidden>
-            <label for="gmapUrlControl">Google Maps URL</label>
-            <input id="gmapUrlControl" type="url" placeholder="https://maps.app.goo.gl/..." />
-            <button type="button" id="gmapImportButton">Import KML</button>
-            <output id="gmapImportStatus" for="gmapUrlControl"></output>
-          </div>
-          <div class="control-row">
-            <label for="kmlUploadControl">Upload KML</label>
-            <input id="kmlUploadControl" type="file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" />
-            <button type="button" id="kmlUploadButton">Upload KML</button>
-            <output id="kmlUploadStatus" for="kmlUploadControl"></output>
-          </div>
-        </details>
-
-        <details class="control-section">
-          <summary>Position</summary>
           <div class="control-row">
             <label for="headingControl">Heading</label>
             <input id="headingControl" type="range" min="0" max="359" value="257" />
@@ -211,6 +181,34 @@
             <label for="progressControl">Route Progress</label>
             <input id="progressControl" type="range" min="0" max="1000" value="0" />
             <output id="progressReadout" for="progressControl">0%</output>
+          </div>
+        </details>
+
+        <details class="control-section">
+          <summary>Profile</summary>
+          <div class="control-row">
+            <label for="profileControl">KML Profile</label>
+            <select id="profileControl"></select>
+            <button type="button" id="kmlDeleteButton" class="push-button" aria-label="Delete selected KML">
+              <span>Delete Selected KML</span>
+            </button>
+            <output id="kmlProfileStatus" for="profileControl"></output>
+          </div>
+          <div class="control-row">
+            <label for="kmlUploadControl">Upload KML</label>
+            <input id="kmlUploadControl" type="file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" />
+            <button type="button" id="kmlUploadButton" class="switch-button" data-state="idle" aria-pressed="false">
+              <span>Upload KML</span>
+            </button>
+            <output id="kmlUploadStatus" for="kmlUploadControl"></output>
+          </div>
+          <div class="control-row" id="gmapImportRow" hidden>
+            <label for="gmapUrlControl">Google Maps URL</label>
+            <input id="gmapUrlControl" type="url" placeholder="https://maps.app.goo.gl/..." />
+            <button type="button" id="gmapImportButton" class="switch-button" data-state="idle" aria-pressed="false">
+              <span>Import KML</span>
+            </button>
+            <output id="gmapImportStatus" for="gmapUrlControl"></output>
           </div>
         </details>
 
@@ -285,7 +283,7 @@
   </main>
   <button type="button" class="mobile-controls-toggle" id="mobileControlsToggle" aria-expanded="false" aria-controls="controlsBody">Menu</button>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-  <footer class="site-footer">WebND project v1.6 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
+  <footer class="site-footer">WebND project v1.7 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
   <script src="app.js"></script>
 </body>
 </html>
