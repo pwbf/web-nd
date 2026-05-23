@@ -1,0 +1,140 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>HOME-SMCI.kml</name>
+<Style id="RouteMark">
+<LineStyle>
+<color>ddff40fc</color>
+<width>6</width>
+</LineStyle>
+<PolyStyle> 
+<color>77ff40fc</color> 
+</PolyStyle> 
+</Style>
+<Style id="WPMark">
+<IconStyle>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/shapes/triangle.png</href>
+</Icon>
+</IconStyle>
+<color>ffffffff</color>
+</Style>
+<Style id="NAMark">
+<IconStyle>
+<Icon>
+<href>http://maps.google.com/mapfiles/kml/shapes/polygon.png</href>
+</Icon>
+</IconStyle>
+<color>ffffffff</color>
+</Style>
+<Placemark>
+<name>Route</name>
+<styleUrl>#RouteMark</styleUrl>
+<LineString>
+<tessellate>1</tessellate>
+<extrude>1</extrude>
+<altitudeMode>absolute</altitudeMode>
+<coordinates>
+121.6162726344388,25.07104159054664,0
+121.6159547583232,25.07068342979535,0
+121.6160901278119,25.07012043435362,0
+121.6152232711328,25.06862739167418,0
+121.6139922068431,25.06872556409063,0
+121.6128005703368,25.06876014112821,0
+121.6125482110048,25.06755624899381,0
+121.61231128018,25.06692388212966,0
+121.6116221444187,25.06711708297428,0
+121.6112756547395,25.06376304050726,0
+121.6159557469555,25.05979478608694,0
+121.6168613600063,25.059072137889,0
+121.6167178548226,25.05575063805762,0
+121.6180090830573,25.05517483122463,0
+121.6171821983818,25.05446425200137,0
+121.6107972595222,25.05373436148776,0
+121.6094256418683,25.05267855871498,0
+121.6073268717633,25.05212786391346,0
+121.5936246437714,25.05050138496682,0
+121.5858974493057,25.04838981969947,0
+121.5828687545743,25.04512666370463,0
+121.5781901016997,25.0409689381543,0
+121.5766925325179,25.04092366883765,0
+121.5668473934417,25.04107508051655,0
+121.5578672255948,25.04132145469644,0
+121.5504877617248,25.04124547551492,0
+121.5440170484471,25.04170056615337,0
+121.5370749670183,25.04170320660135,0
+121.5331705808225,25.04233269854346,0
+121.5234878943526,25.04486065287803,0
+121.5174843212834,25.04606341110542,0
+121.5105859290382,25.04799706638723,0
+121.5083787546524,25.04219115781232,0
+121.5063728389713,25.03664622107038,0
+121.503183671335,25.03496804336271,0
+121.4998323909852,25.03489968498296,0
+121.4781837248419,25.03585968558922,0
+121.4725288323388,25.02979363158927,0
+121.4682802556536,25.02347881892854,0
+121.4682369958785,25.02233329532357,0
+121.4732770920902,25.01548301647035,0
+121.476450309106,25.01226884181322,0
+121.4810786027977,25.00969807456661,0
+121.4832312798296,25.00760228869868,0
+121.4842414578587,25.00487244960285,0
+121.4850925068291,25.00033170299729,0
+121.4853395329921,24.99695685903256,0
+121.4865762648783,24.99722522826885,0
+121.4875982587697,24.99798313382695,0
+</coordinates>
+</LineString>
+</Placemark>
+<Placemark><name>HHOME</name><styleUrl>#WPMark</styleUrl><description>HHOME (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6162726344388,25.07104159054664,0</coordinates></Point></Placemark>
+<Placemark><name>F0002</name><styleUrl>#WPMark</styleUrl><description>F0002 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6159547583232,25.07068342979535,0</coordinates></Point></Placemark>
+<Placemark><name>F0003</name><styleUrl>#WPMark</styleUrl><description>F0003 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6160901278119,25.07012043435362,0</coordinates></Point></Placemark>
+<Placemark><name>DHELS</name><styleUrl>#WPMark</styleUrl><description>DHELS (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6152232711328,25.06862739167418,0</coordinates></Point></Placemark>
+<Placemark><name>F0005</name><styleUrl>#WPMark</styleUrl><description>F0005 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6139922068431,25.06872556409063,0</coordinates></Point></Placemark>
+<Placemark><name>F0006</name><styleUrl>#WPMark</styleUrl><description>F0006 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6128005703368,25.06876014112821,0</coordinates></Point></Placemark>
+<Placemark><name>F0007</name><styleUrl>#WPMark</styleUrl><description>F0007 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6125482110048,25.06755624899381,0</coordinates></Point></Placemark>
+<Placemark><name>F0008</name><styleUrl>#WPMark</styleUrl><description>F0008 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.61231128018,25.06692388212966,0</coordinates></Point></Placemark>
+<Placemark><name>MBR22</name><styleUrl>#WPMark</styleUrl><description>MBR22 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6116221444187,25.06711708297428,0</coordinates></Point></Placemark>
+<Placemark><name>F0010</name><styleUrl>#WPMark</styleUrl><description>F0010 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6112756547395,25.06376304050726,0</coordinates></Point></Placemark>
+<Placemark><name>MBR23</name><styleUrl>#WPMark</styleUrl><description>MBR23 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6159557469555,25.05979478608694,0</coordinates></Point></Placemark>
+<Placemark><name>F0012</name><styleUrl>#WPMark</styleUrl><description>F0012 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6168613600063,25.059072137889,0</coordinates></Point></Placemark>
+<Placemark><name>F0013</name><styleUrl>#WPMark</styleUrl><description>F0013 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6167178548226,25.05575063805762,0</coordinates></Point></Placemark>
+<Placemark><name>MBR24</name><styleUrl>#WPMark</styleUrl><description>MBR24 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6180090830573,25.05517483122463,0</coordinates></Point></Placemark>
+<Placemark><name>MBL23</name><styleUrl>#WPMark</styleUrl><description>MBL23 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6171821983818,25.05446425200137,0</coordinates></Point></Placemark>
+<Placemark><name>F0016</name><styleUrl>#WPMark</styleUrl><description>F0016 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6107972595222,25.05373436148776,0</coordinates></Point></Placemark>
+<Placemark><name>F0017</name><styleUrl>#WPMark</styleUrl><description>F0017 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6094256418683,25.05267855871498,0</coordinates></Point></Placemark>
+<Placemark><name>MBL22</name><styleUrl>#WPMark</styleUrl><description>MBL22 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.6073268717633,25.05212786391346,0</coordinates></Point></Placemark>
+<Placemark><name>MBL21</name><styleUrl>#WPMark</styleUrl><description>MBL21 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5936246437714,25.05050138496682,0</coordinates></Point></Placemark>
+<Placemark><name>F0020</name><styleUrl>#WPMark</styleUrl><description>F0020 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5858974493057,25.04838981969947,0</coordinates></Point></Placemark>
+<Placemark><name>MBL20</name><styleUrl>#WPMark</styleUrl><description>MBL20 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5828687545743,25.04512666370463,0</coordinates></Point></Placemark>
+<Placemark><name>F0022</name><styleUrl>#WPMark</styleUrl><description>F0022 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5781901016997,25.0409689381543,0</coordinates></Point></Placemark>
+<Placemark><name>MBL19</name><styleUrl>#WPMark</styleUrl><description>MBL19 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5766925325179,25.04092366883765,0</coordinates></Point></Placemark>
+<Placemark><name>MBL18</name><styleUrl>#WPMark</styleUrl><description>MBL18 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5668473934417,25.04107508051655,0</coordinates></Point></Placemark>
+<Placemark><name>MBL17</name><styleUrl>#WPMark</styleUrl><description>MBL17 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5578672255948,25.04132145469644,0</coordinates></Point></Placemark>
+<Placemark><name>MBL16</name><styleUrl>#WPMark</styleUrl><description>MBL16 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5504877617248,25.04124547551492,0</coordinates></Point></Placemark>
+<Placemark><name>MBL15</name><styleUrl>#WPMark</styleUrl><description>MBL15 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5440170484471,25.04170056615337,0</coordinates></Point></Placemark>
+<Placemark><name>F0028</name><styleUrl>#WPMark</styleUrl><description>F0028 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5370749670183,25.04170320660135,0</coordinates></Point></Placemark>
+<Placemark><name>MBL14</name><styleUrl>#WPMark</styleUrl><description>MBL14 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5331705808225,25.04233269854346,0</coordinates></Point></Placemark>
+<Placemark><name>MBL13</name><styleUrl>#WPMark</styleUrl><description>MBL13 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5234878943526,25.04486065287803,0</coordinates></Point></Placemark>
+<Placemark><name>MBL12</name><styleUrl>#WPMark</styleUrl><description>MBL12 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5174843212834,25.04606341110542,0</coordinates></Point></Placemark>
+<Placemark><name>F0032</name><styleUrl>#WPMark</styleUrl><description>F0032 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5105859290382,25.04799706638723,0</coordinates></Point></Placemark>
+<Placemark><name>MBL11</name><styleUrl>#WPMark</styleUrl><description>MBL11 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5083787546524,25.04219115781232,0</coordinates></Point></Placemark>
+<Placemark><name>F0034</name><styleUrl>#WPMark</styleUrl><description>F0034 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.5063728389713,25.03664622107038,0</coordinates></Point></Placemark>
+<Placemark><name>F0035</name><styleUrl>#WPMark</styleUrl><description>F0035 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.503183671335,25.03496804336271,0</coordinates></Point></Placemark>
+<Placemark><name>MBL10</name><styleUrl>#WPMark</styleUrl><description>MBL10 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4998323909852,25.03489968498296,0</coordinates></Point></Placemark>
+<Placemark><name>F0037</name><styleUrl>#WPMark</styleUrl><description>F0037 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4781837248419,25.03585968558922,0</coordinates></Point></Placemark>
+<Placemark><name>MBL09</name><styleUrl>#WPMark</styleUrl><description>MBL09 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4725288323388,25.02979363158927,0</coordinates></Point></Placemark>
+<Placemark><name>MBL08</name><styleUrl>#WPMark</styleUrl><description>MBL08 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4682802556536,25.02347881892854,0</coordinates></Point></Placemark>
+<Placemark><name>F0040</name><styleUrl>#WPMark</styleUrl><description>F0040 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4682369958785,25.02233329532357,0</coordinates></Point></Placemark>
+<Placemark><name>F0041</name><styleUrl>#WPMark</styleUrl><description>F0041 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4732770920902,25.01548301647035,0</coordinates></Point></Placemark>
+<Placemark><name>F0042</name><styleUrl>#WPMark</styleUrl><description>F0042 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.476450309106,25.01226884181322,0</coordinates></Point></Placemark>
+<Placemark><name>F0043</name><styleUrl>#WPMark</styleUrl><description>F0043 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4810786027977,25.00969807456661,0</coordinates></Point></Placemark>
+<Placemark><name>F0044</name><styleUrl>#WPMark</styleUrl><description>F0044 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4832312798296,25.00760228869868,0</coordinates></Point></Placemark>
+<Placemark><name>F0045</name><styleUrl>#WPMark</styleUrl><description>F0045 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4842414578587,25.00487244960285,0</coordinates></Point></Placemark>
+<Placemark><name>F0046</name><styleUrl>#WPMark</styleUrl><description>F0046 (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4850925068291,25.00033170299729,0</coordinates></Point></Placemark>
+<Placemark><name>XZSHI</name><styleUrl>#WPMark</styleUrl><description>XZSHI (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4853395329921,24.99695685903256,0</coordinates></Point></Placemark>
+<Placemark><name>FECST</name><styleUrl>#WPMark</styleUrl><description>FECST (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4865762648783,24.99722522826885,0</coordinates></Point></Placemark>
+<Placemark><name>SSMCI</name><styleUrl>#WPMark</styleUrl><description>SSMCI (Waypoint)</description><Point><altitudeMode>absolute</altitudeMode><coordinates>121.4875982587697,24.99798313382695,0</coordinates></Point></Placemark>
+</Document>
+</kml>

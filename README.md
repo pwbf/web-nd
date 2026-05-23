@@ -79,7 +79,7 @@ POST /api/navigation
 Content-Type: application/json
 ```
 
-Import a Google Maps route URL through the backend job service:
+Import a Google Maps route URL:
 
 ```bash
 POST /api/gmap/import
@@ -111,9 +111,9 @@ The API is intentionally small so a future adapter can translate navigation sour
 
 ## Google Maps Import Configuration
 
-The Google Maps import UI submits the pasted URL to the WebND backend. The backend then creates a `gmap2kml` job, waits for completion, downloads the output zip, extracts KML files, and writes them into `data/`.
+The Google Maps import UI submits the pasted URL to the WebND backend. When Nebula job settings are fully configured, the backend creates a `gmap2kml` job, waits for completion, downloads the output zip, extracts KML files, and writes them into `data/`.
 
-Configure the backend with:
+Configure Nebula import with:
 
 ```bash
 GMAP_JOBS_URL=https://neb.pwbf.pw:8585
@@ -123,7 +123,21 @@ GMAP_JOBS_PASSWORD=your-api-password
 
 Do not put the job API password in browser-side code.
 
-When `GMAP_JOBS_PASSWORD` is not configured, the Google Maps URL import field is hidden in the web UI.
+When Nebula URL, username, or password is not configured, WebND falls back to the bundled local `GMapLink2KML` tool. The local tool runs as:
+
+```bash
+python3 main.py <google-map-url>
+```
+
+Local import settings:
+
+```bash
+GMAP_LOCAL_TOOL_DIR=/usr/src/app/GMapLink2KML
+GMAP_LOCAL_PYTHON=python3
+GMAP_LOCAL_TIMEOUT_MS=180000
+```
+
+The Google Maps URL field is shown when either Nebula import is configured or the local `GMapLink2KML` tool is available.
 
 ## KML Uploads and Retention
 

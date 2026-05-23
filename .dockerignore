@@ -5,3 +5,11 @@ Dockerfile
 .git
 .agents
 .codex
+
+GMapLink2KML/.git
+GMapLink2KML/.venv
+GMapLink2KML/__pycache__
+GMapLink2KML/*.pyc
+GMapLink2KML/output.json
+GMapLink2KML/gps_only.json
+GMapLink2KML/route*.kml

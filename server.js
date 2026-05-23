@@ -1,7 +1,9 @@
 const express = require('express');
 const AdmZip = require('adm-zip');
+const {spawn} = require('child_process');
 const fs = require('fs');
 const https = require('https');
+const os = require('os');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -11,6 +13,9 @@ const GMAP_JOBS_URL = process.env.GMAP_JOBS_URL || 'https://neb.pwbf.pw:8585';
 const GMAP_JOBS_USER = process.env.GMAP_JOBS_USER || 'admin';
 const GMAP_JOBS_PASSWORD = process.env.GMAP_JOBS_PASSWORD || '';
 const GMAP_JOB_TIMEOUT_MS = Number(process.env.GMAP_JOB_TIMEOUT_MS || 180000);
+const GMAP_LOCAL_TOOL_DIR = process.env.GMAP_LOCAL_TOOL_DIR || path.join(__dirname, 'GMapLink2KML');
+const GMAP_LOCAL_PYTHON = process.env.GMAP_LOCAL_PYTHON || 'python3';
+const GMAP_LOCAL_TIMEOUT_MS = Number(process.env.GMAP_LOCAL_TIMEOUT_MS || 180000);
 const MAX_KML_UPLOAD_BYTES = Number(process.env.MAX_KML_UPLOAD_BYTES || 10 * 1024 * 1024);
 const ROUTE_KML_RETENTION_HOURS = Number(process.env.ROUTE_KML_RETENTION_HOURS || 24);
 const ROUTE_KML_CLEANUP_INTERVAL_MS = Number(process.env.ROUTE_KML_CLEANUP_INTERVAL_MS || 60 * 60 * 1000);
@@ -151,6 +156,92 @@ function cleanupRouteKmlFiles() {
         fs.unlinkSync(filePath);
       }
     });
+}
+
+function nebulaGmapImportConfigured() {
+  return Boolean(GMAP_JOBS_URL && GMAP_JOBS_USER && GMAP_JOBS_PASSWORD);
+}
+
+function localGmapImportAvailable() {
+  return fs.existsSync(path.join(GMAP_LOCAL_TOOL_DIR, 'main.py'))
+    && fs.existsSync(path.join(GMAP_LOCAL_TOOL_DIR, 'sample.kml'));
+}
+
+function copyLocalGmapToolFile(workDir, filename) {
+  fs.copyFileSync(path.join(GMAP_LOCAL_TOOL_DIR, filename), path.join(workDir, filename));
+}
+
+function runProcess(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: {...process.env, ...(options.env || {})},
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let finished = false;
+
+    const timeout = setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      child.kill('SIGKILL');
+      reject(new Error(`${command} timed out after ${options.timeoutMs} ms`));
+    }, options.timeoutMs || 180000);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString('utf8');
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString('utf8');
+    });
+    child.on('error', (error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on('close', (code) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve({stdout, stderr});
+        return;
+      }
+      reject(new Error(`${command} exited with ${code}: ${stderr || stdout}`));
+    });
+  });
+}
+
+async function importGmapWithLocalTool(url) {
+  if (!localGmapImportAvailable()) {
+    throw new Error('Local GMapLink2KML tool is not available');
+  }
+
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webnd-gmap-'));
+  try {
+    copyLocalGmapToolFile(workDir, 'main.py');
+    copyLocalGmapToolFile(workDir, 'sample.kml');
+    const result = await runProcess(GMAP_LOCAL_PYTHON, ['main.py', url], {
+      cwd: workDir,
+      timeoutMs: GMAP_LOCAL_TIMEOUT_MS,
+    });
+    const [generatedFile] = fs.readdirSync(workDir)
+      .filter((file) => /^route.*\.kml$/i.test(file))
+      .sort((a, b) => fs.statSync(path.join(workDir, b)).mtimeMs - fs.statSync(path.join(workDir, a)).mtimeMs);
+
+    if (!generatedFile) {
+      throw new Error(`Local GMapLink2KML did not generate a route KML file: ${result.stdout || result.stderr}`);
+    }
+
+    const content = fs.readFileSync(path.join(workDir, generatedFile), 'utf8');
+    const file = writeKmlFile(generatedFile, content);
+    activeProfileId = file;
+    return {provider: 'local', files: [file], profiles: [{id: file, name: file}], log: result.stdout.trim()};
+  } finally {
+    fs.rmSync(workDir, {recursive: true, force: true});
+  }
 }
 
 function jobAuthHeader() {
@@ -580,8 +671,11 @@ app.use(express.json({limit: MAX_KML_UPLOAD_BYTES + 1024}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/config', (req, res) => {
+  const nebulaConfigured = nebulaGmapImportConfigured();
+  const localAvailable = localGmapImportAvailable();
   res.json({
-    gmapImportEnabled: Boolean(GMAP_JOBS_PASSWORD),
+    gmapImportEnabled: nebulaConfigured || localAvailable,
+    gmapImportProvider: nebulaConfigured ? 'nebula' : localAvailable ? 'local' : null,
     maxKmlUploadBytes: MAX_KML_UPLOAD_BYTES,
     routeKmlRetentionHours: ROUTE_KML_RETENTION_HOURS,
   });
@@ -625,8 +719,9 @@ app.post('/api/gmap/import', async (req, res) => {
       res.status(400).json({error: 'A valid Google Maps URL is required'});
       return;
     }
-    if (!GMAP_JOBS_PASSWORD) {
-      res.status(500).json({error: 'GMAP_JOBS_PASSWORD is not configured on the server'});
+    if (!nebulaGmapImportConfigured()) {
+      const result = await importGmapWithLocalTool(url);
+      res.json(result);
       return;
     }
 
@@ -634,7 +729,9 @@ app.post('/api/gmap/import', async (req, res) => {
     const job = await waitForJob(jobId);
     const zipBuffer = await jobRequest('GET', `/jobs/${encodeURIComponent(jobId)}/download`, {binary: true});
     const files = extractKmlFiles(zipBuffer);
-    res.json({jobId, job, files, profiles: files.map((file) => ({id: file, name: file}))});
+    const [firstFile] = files;
+    if (firstFile) activeProfileId = firstFile;
+    res.json({provider: 'nebula', jobId, job, files, profiles: files.map((file) => ({id: file, name: file}))});
   } catch (error) {
     console.error('Google Maps import failed', error);
     res.status(500).json({error: error.message});

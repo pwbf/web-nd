@@ -65,6 +65,7 @@ let visibleNavaidTableSignature = '';
 let visibleAirportTableSignature = '';
 let gpsPrimaryVisibleUntil = 0;
 let toastTimer = null;
+let serverConfig = {gmapImportEnabled: false, gmapImportProvider: null};
 
 const els = {
   gs: document.getElementById('gsReadout'),
@@ -503,6 +504,7 @@ async function loadServerConfig() {
     const response = await fetch('/api/config');
     if (!response.ok) return;
     const config = await response.json();
+    serverConfig = config;
     if (els.gmapImportRow) {
       els.gmapImportRow.hidden = !config.gmapImportEnabled;
     }
@@ -522,7 +524,9 @@ async function importGoogleMapsRoute() {
   }
 
   els.gmapImport.disabled = true;
-  els.gmapImportStatus.textContent = 'Submitting import job...';
+  els.gmapImportStatus.textContent = serverConfig.gmapImportProvider === 'local'
+    ? 'Running local GMapLink2KML...'
+    : 'Submitting import job...';
   try {
     const response = await fetch('/api/gmap/import', {
       method: 'POST',
@@ -543,7 +547,9 @@ async function importGoogleMapsRoute() {
     els.gmapUrl.value = '';
     els.gmapImportStatus.textContent = firstFile ? `Imported ${firstFile}` : 'Import complete';
     showToast(firstFile ? `Imported and loaded ${firstFile}` : 'Google Maps import complete');
-    debugLog(`Google Maps import job ${result.jobId} complete`);
+    debugLog(result.provider === 'local'
+      ? 'Local Google Maps import complete'
+      : `Google Maps import job ${result.jobId} complete`);
   } catch (error) {
     console.warn('Google Maps import failed', error);
     els.gmapImportStatus.textContent = error.message;
