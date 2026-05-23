@@ -68,6 +68,7 @@ let toastTimer = null;
 let serverConfig = {gmapImportEnabled: false, gmapImportProvider: null};
 
 const els = {
+  instrument: document.querySelector('.instrument'),
   gs: document.getElementById('gsReadout'),
   tas: document.getElementById('tasReadout'),
   windArrow: document.getElementById('windArrow'),
@@ -94,6 +95,7 @@ const els = {
   toast: document.getElementById('toast'),
   controlsPanel: document.querySelector('.controls'),
   controlsToggle: document.getElementById('controlsToggle'),
+  mobileControlsToggle: document.getElementById('mobileControlsToggle'),
   profile: document.getElementById('profileControl'),
   kmlDeleteButton: document.getElementById('kmlDeleteButton'),
   kmlProfileStatus: document.getElementById('kmlProfileStatus'),
@@ -114,6 +116,7 @@ const els = {
   showAirports: document.getElementById('showAirportsControl'),
   layerButtons: document.querySelectorAll('[data-layer-toggle]'),
   unit: document.getElementById('unitControl'),
+  hudMode: document.getElementById('hudModeControl'),
   headingControl: document.getElementById('headingControl'),
   latitudeControl: document.getElementById('latitudeControl'),
   longitudeControl: document.getElementById('longitudeControl'),
@@ -158,6 +161,17 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => {
     els.toast.hidden = true;
   }, 3200);
+}
+
+function setControlsCollapsed(collapsed) {
+  els.controlsPanel.classList.toggle('collapsed', collapsed);
+  const label = collapsed ? 'Menu' : 'Close';
+  els.controlsToggle.textContent = label;
+  els.controlsToggle.setAttribute('aria-expanded', String(!collapsed));
+  if (els.mobileControlsToggle) {
+    els.mobileControlsToggle.textContent = label;
+    els.mobileControlsToggle.setAttribute('aria-expanded', String(!collapsed));
+  }
 }
 
 function normalizeDegrees(value) {
@@ -1687,9 +1701,11 @@ els.profile.addEventListener('change', async (event) => {
 });
 
 els.controlsToggle.addEventListener('click', () => {
-  const collapsed = els.controlsPanel.classList.toggle('collapsed');
-  els.controlsToggle.textContent = collapsed ? 'Show' : 'Hide';
-  els.controlsToggle.setAttribute('aria-expanded', String(!collapsed));
+  setControlsCollapsed(!els.controlsPanel.classList.contains('collapsed'));
+});
+
+els.mobileControlsToggle.addEventListener('click', () => {
+  setControlsCollapsed(!els.controlsPanel.classList.contains('collapsed'));
 });
 
 els.unit.addEventListener('change', () => {
@@ -1699,6 +1715,11 @@ els.unit.addEventListener('change', () => {
   visibleNavaidTableSignature = '';
   visibleAirportTableSignature = '';
   debugLog(`Units changed to ${distanceUnitText()}`);
+});
+
+els.hudMode.addEventListener('change', (event) => {
+  els.instrument.classList.toggle('hud-mirror', event.target.checked);
+  debugLog(`HUD mirror ${event.target.checked ? 'enabled' : 'disabled'}`);
 });
 
 els.headingControl.addEventListener('input', (event) => {
@@ -1792,6 +1813,8 @@ els.recenter.addEventListener('click', () => {
 
 // Comment out this line to disable click-to-log canvas coordinates.
 enableCanvasCoordinateDebug();
+
+setControlsCollapsed(true);
 
 Promise.all([loadServerConfig(), loadProfiles()]).then(() => loadNavigation()).finally(() => {
   baselineState = structuredClone(state);
