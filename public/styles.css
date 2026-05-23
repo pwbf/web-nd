@@ -90,6 +90,7 @@ body {
 }
 
 .instrument.hud-mirror {
+  filter: brightness(1.75) saturate(1.35) contrast(1.5);
   transform: scaleY(-1);
 }
 
@@ -249,12 +250,13 @@ body {
 }
 
 .radio-text {
+  color: var(--white);
   display: grid;
   gap: 3px;
 }
 
 .radios strong {
-  color: #bfbfbf;
+  color: var(--white);
   font-weight: 400;
 }
 
@@ -361,6 +363,7 @@ body {
 }
 
 .control-row {
+  padding-top: 5px;
   display: grid;
   gap: 6px;
 }
@@ -591,6 +594,7 @@ button.active {
 }
 
 .check-row {
+  padding-top: 5px;
   position: relative;
   display: grid;
   grid-template-columns: 62px 1fr;

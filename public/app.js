@@ -1541,10 +1541,10 @@ function drawOwnship(view) {
   ctx.fillStyle = colors.amber;
   ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.moveTo(0, -2);
+  ctx.moveTo(0, 2);
   ctx.lineTo(0, 44);
-  ctx.moveTo(-20, 15);
-  ctx.lineTo(20, 15);
+  ctx.moveTo(-23, 17);
+  ctx.lineTo(23, 17);
   ctx.moveTo(-6, 38);
   ctx.lineTo(6, 38);
   ctx.stroke();
