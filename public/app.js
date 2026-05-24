@@ -69,6 +69,7 @@ let serverConfig = {gmapImportEnabled: false, gmapImportProvider: null};
 
 const els = {
   instrument: document.querySelector('.instrument'),
+  loadingOverlay: document.getElementById('loadingOverlay'),
   gs: document.getElementById('gsReadout'),
   tas: document.getElementById('tasReadout'),
   windArrow: document.getElementById('windArrow'),
@@ -161,6 +162,12 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => {
     els.toast.hidden = true;
   }, 3200);
+}
+
+function hideLoadingOverlay() {
+  if (els.loadingOverlay) {
+    els.loadingOverlay.hidden = true;
+  }
 }
 
 function setControlsCollapsed(collapsed) {
@@ -1417,7 +1424,7 @@ function drawNavaids(view, visibleNavaids) {
   clipToAzimuth(view);
   visibleNavaids.forEach(({navaid, screen}) => {
     if (isVorNavaid(navaid)) {
-      const color = state.navaidTypeFilters.vor ? colors.magenta : colors.cyan;
+      const color = isTrackedVorNavaid(navaid) ? colors.cyan : state.navaidTypeFilters.vor ? colors.magenta : colors.cyan;
       drawNavaidSymbol(screen.x, screen.y, color);
       drawNavaidLabel(navaid.id, screen.x, screen.y, color);
       return;
@@ -1879,5 +1886,7 @@ setControlsCollapsed(true);
 Promise.all([loadServerConfig(), loadProfiles()]).then(() => loadNavigation()).finally(() => {
   baselineState = structuredClone(state);
   updateModeButtons();
+  draw();
+  hideLoadingOverlay();
   requestAnimationFrame(tick);
 });

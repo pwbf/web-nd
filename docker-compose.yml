@@ -7,8 +7,8 @@ services:
       - "4000:4000"
     environment:
       PORT: 4000
-      GMAP_JOBS_URL: ${GMAP_JOBS_URL:-https://neb.pwbf.pw:8585}
-      GMAP_JOBS_USER: ${GMAP_JOBS_USER:-admin}
+      GMAP_JOBS_URL: ${GMAP_JOBS_URL:-}
+      GMAP_JOBS_USER: ${GMAP_JOBS_USER:-}
       GMAP_JOBS_PASSWORD: ${GMAP_JOBS_PASSWORD:-}
       GMAP_LOCAL_TOOL_DIR: ${GMAP_LOCAL_TOOL_DIR:-/usr/src/app/GMapLink2KML}
       GMAP_LOCAL_PYTHON: ${GMAP_LOCAL_PYTHON:-python3}

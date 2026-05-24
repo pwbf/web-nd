@@ -107,6 +107,31 @@ body {
   height: 100%;
 }
 
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  color: var(--green);
+  background: rgb(0 0 0 / 62%);
+  font-size: clamp(18px, 2.4vw, 28px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 7px rgb(0 255 59 / 65%);
+}
+
+.loading-overlay[hidden] {
+  display: none;
+}
+
+.loading-overlay span {
+  padding: 10px 14px;
+  background: rgb(0 0 0 / 48%);
+  line-height: 1.25;
+  text-align: center;
+}
+
 .readout,
 .radios,
 .ta-only {
