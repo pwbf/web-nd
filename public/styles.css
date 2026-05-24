@@ -444,6 +444,14 @@ output {
   font-size: 12px;
 }
 
+output[data-state="available"] {
+  color: var(--green);
+}
+
+output[data-state="fault"] {
+  color: var(--amber);
+}
+
 .control-section {
   display: grid;
   gap: 10px;
@@ -778,6 +786,13 @@ button.active {
 
 .switch-button[data-state="active"] span::before,
 .switch-button[data-state="available"] span::before {
+  content: "ON";
+  color: var(--cyan);
+  border-color: var(--cyan);
+  text-shadow: 0 0 5px rgb(5 216 255 / 65%);
+}
+
+.switch-button[data-state="fault"][aria-pressed="true"] span::before {
   content: "ON";
   color: var(--cyan);
   border-color: var(--cyan);

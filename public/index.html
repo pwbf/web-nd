@@ -156,10 +156,18 @@
 
         <details class="control-section">
           <summary>Simulation & GPS</summary>
-          <div class="control-actions">
-            <button type="button" id="locationButton">Use GPS</button>
-            <button type="button" id="playButton">Play</button>
-            <button type="button" id="recenterButton">Reset</button>
+          <div class="control-row">
+            <label for="locationButton">GPS</label>
+            <button type="button" id="locationButton" class="switch-button" data-state="idle" aria-pressed="false">
+              <span>Use GPS</span>
+            </button>
+            <output id="gpsStatus" for="locationButton"></output>
+          </div>
+          <div class="control-row">
+            <label for="playButton">Simulation</label>
+            <button type="button" id="playButton" class="switch-button" data-state="idle" aria-pressed="false">
+              <span>Play Simulation</span>
+            </button>
           </div>
           <div class="control-row">
             <label for="gpsHeadingMinSpeedControl">GPS Heading Min Speed</label>
@@ -277,7 +285,7 @@
           </div>
         </details>
 
-        <details class="debug-panel">
+        <details class="debug-panel" id="debugPanel">
           <summary>Debug</summary>
           <pre id="debugLog" class="debug-log" aria-live="polite"></pre>
         </details>
@@ -286,7 +294,7 @@
   </main>
   <button type="button" class="mobile-controls-toggle" id="mobileControlsToggle" aria-expanded="false" aria-controls="controlsBody">Menu</button>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-  <footer class="site-footer">WebND project v1.8 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
+  <footer class="site-footer">WebND project v1.9 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
   <script src="app.js"></script>
 </body>
 </html>

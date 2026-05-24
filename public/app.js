@@ -135,8 +135,9 @@ const els = {
   gpsHeadingMinSpeedReadout: document.getElementById('gpsHeadingMinSpeedReadout'),
   play: document.getElementById('playButton'),
   location: document.getElementById('locationButton'),
+  gpsStatus: document.getElementById('gpsStatus'),
   fakeHeading: document.getElementById('fakeHeadingControl'),
-  recenter: document.getElementById('recenterButton'),
+  debugPanel: document.getElementById('debugPanel'),
   debugLog: document.getElementById('debugLog'),
   modeButtons: document.querySelectorAll('[data-mode]'),
 };
@@ -152,6 +153,12 @@ function debugLog(message) {
   const nextLine = `[${timestamp}] ${message}`;
   const lines = [nextLine, ...(els.debugLog.textContent ? els.debugLog.textContent.split('\n') : [])].slice(0, 80);
   els.debugLog.textContent = lines.join('\n');
+}
+
+function openDebugPanel() {
+  if (els.debugPanel) {
+    els.debugPanel.open = true;
+  }
 }
 
 function showToast(message) {
@@ -842,8 +849,7 @@ function setRouteProgress(ratio) {
   recomputeAirportsFromPosition();
 
   if (clampedRatio >= 1) {
-    simulationPlaying = false;
-    els.play.textContent = 'Play';
+    setSimulationSwitchState(false);
   }
 }
 
@@ -921,6 +927,26 @@ function recomputeAirportsFromPosition() {
   }));
 }
 
+function setGpsSwitchState(mode, message = '') {
+  els.location.dataset.state = mode;
+  els.location.setAttribute('aria-pressed', String(['active', 'available', 'fault'].includes(mode)));
+  if (els.gpsStatus) {
+    els.gpsStatus.textContent = message;
+    els.gpsStatus.dataset.state = mode;
+  }
+}
+
+function setSimulationSwitchState(playing) {
+  simulationPlaying = playing;
+  els.play.dataset.state = playing ? 'active' : 'idle';
+  els.play.setAttribute('aria-pressed', String(playing));
+}
+
+function resetSimulation() {
+  mergeNavigation(structuredClone(baselineState));
+  setSimulationSwitchState(false);
+}
+
 function stopLocationWatch() {
   if (locationWatchId !== null) {
     navigator.geolocation.clearWatch(locationWatchId);
@@ -929,8 +955,7 @@ function stopLocationWatch() {
     previousGpsTimestamp = null;
     debugLog('GPS watch stopped');
   }
-  els.location.textContent = 'Use GPS';
-  els.location.classList.remove('active');
+  setGpsSwitchState('idle');
   els.progressControlRow.hidden = false;
   els.trueAirSpeedControlRow.hidden = false;
 }
@@ -946,7 +971,8 @@ function applyBrowserPosition(position) {
   const fakeHeading = headingReliable && previousGpsPosition
     ? bearingBetween(previousGpsPosition, gpsPosition)
     : null;
-  const useFakeHeading = els.fakeHeading.checked && Number.isFinite(fakeHeading);
+  const fakeHeadingMode = Boolean(els.fakeHeading?.checked);
+  const useFakeHeading = fakeHeadingMode && Number.isFinite(fakeHeading);
 
   state.currentPosition = {
     ...(state.currentPosition || {}),
@@ -956,8 +982,7 @@ function applyBrowserPosition(position) {
     routeDistanceNm: nearestRouteDistance({lat: latitude, lon: longitude}),
   };
   state.source = 'GPS';
-  simulationPlaying = false;
-  els.play.textContent = 'Play';
+  setSimulationSwitchState(false);
   syncPositionControls();
   recomputeNavigationFromPosition({updateHeading: false});
   recomputeNavaidsFromPosition();
@@ -984,7 +1009,7 @@ function applyBrowserPosition(position) {
     `accuracy=${debugValue(accuracy, (value) => `${value.toFixed(1)}m`)} ` +
     `heading=${debugValue(heading, (value) => `${normalizeDegrees(value).toFixed(1)}deg`)} ` +
     `fakeHeading=${debugValue(fakeHeading, (value) => `${value.toFixed(1)}deg`)} ` +
-    `fakeHeadingMode=${els.fakeHeading.checked ? 'on' : 'off'} ` +
+    `fakeHeadingMode=${fakeHeadingMode ? 'on' : 'off'} ` +
     `vector=${movementDistanceM.toFixed(1)}m ` +
     `vectorSpeed=${debugValue(movementSpeed, (value) => `${value.toFixed(2)}m/s`)} ` +
     `minHeadingSpeed=${state.gpsHeadingMinSpeedMps.toFixed(1)}m/s ` +
@@ -997,22 +1022,54 @@ function applyBrowserPosition(position) {
   );
   previousGpsPosition = gpsPosition;
   previousGpsTimestamp = position.timestamp;
+  setGpsSwitchState('available', `GPS position received. Accuracy ${debugValue(accuracy, (value) => `${value.toFixed(1)} m`)}`);
+}
+
+function gpsErrorHint(error) {
+  if (error.code === 1) {
+    return 'GPS permission denied. Allow location access in the browser and OS privacy settings.';
+  }
+  if (error.code === 2) {
+    return 'GPS position unavailable. Check OS location services, browser permission, Wi-Fi, or GNSS signal.';
+  }
+  if (error.code === 3) {
+    return 'GPS timed out before receiving coordinates. Move outdoors or check OS location services.';
+  }
+  return 'GPS failed. Check browser permission and operating system location services.';
+}
+
+function stopLocationWatchAfterError(message) {
+  if (locationWatchId !== null) {
+    navigator.geolocation.clearWatch(locationWatchId);
+    locationWatchId = null;
+    previousGpsPosition = null;
+    previousGpsTimestamp = null;
+    debugLog('GPS watch stopped');
+  }
+  setGpsSwitchState('fault', message);
+  els.progressControlRow.hidden = false;
+  els.trueAirSpeedControlRow.hidden = false;
 }
 
 function handleLocationError(error) {
+  const message = gpsErrorHint(error);
   console.warn('Unable to use browser location', error);
   debugLog(`GPS error ${error.code}: ${error.message}`);
-  stopLocationWatch();
+  openDebugPanel();
+  stopLocationWatchAfterError(message);
 }
 
 function startLocationWatch() {
   if (!('geolocation' in navigator)) {
+    const message = 'GPS is not supported by this browser. Use a browser and OS with location services enabled.';
     console.warn('Geolocation is not supported by this browser.');
     debugLog('GPS unavailable: geolocation is not supported by this browser');
+    openDebugPanel();
+    setGpsSwitchState('fault', message);
     return;
   }
 
-  els.location.textContent = 'GPS...';
+  setGpsSwitchState('active', 'Waiting for GPS permission and coordinates...');
   gpsPrimaryVisibleUntil = performance.now() + GPS_PRIMARY_DISPLAY_MS;
   previousGpsPosition = null;
   previousGpsTimestamp = null;
@@ -1022,8 +1079,7 @@ function startLocationWatch() {
     maximumAge: 0,
     timeout: 10000,
   });
-  els.location.textContent = 'Stop GPS';
-  els.location.classList.add('active');
+  setGpsSwitchState('active', 'GPS watch started. Waiting for coordinates...');
   els.progressControlRow.hidden = true;
   els.trueAirSpeedControlRow.hidden = true;
   debugLog(`GPS watch started id=${locationWatchId}`);
@@ -1751,8 +1807,7 @@ els.kmlDeleteButton.addEventListener('pointerdown', () => {
 
 els.profile.addEventListener('change', async (event) => {
   stopLocationWatch();
-  simulationPlaying = false;
-  els.play.textContent = 'Play';
+  setSimulationSwitchState(false);
   syncKmlProfileActions();
   els.kmlProfileStatus.textContent = '';
   if (!event.target.value) {
@@ -1858,24 +1913,22 @@ els.modeButtons.forEach((button) => {
 });
 
 els.play.addEventListener('click', () => {
+  if (simulationPlaying) {
+    stopLocationWatch();
+    resetSimulation();
+    return;
+  }
+
   stopLocationWatch();
-  simulationPlaying = !simulationPlaying;
-  els.play.textContent = simulationPlaying ? 'Pause' : 'Play';
+  setSimulationSwitchState(true);
 });
 
 els.location.addEventListener('click', () => {
-  if (locationWatchId !== null) {
+  if (locationWatchId !== null || els.location.dataset.state === 'fault' || els.location.dataset.state === 'available') {
     stopLocationWatch();
   } else {
     startLocationWatch();
   }
-});
-
-els.recenter.addEventListener('click', () => {
-  stopLocationWatch();
-  mergeNavigation(structuredClone(baselineState));
-  simulationPlaying = false;
-  els.play.textContent = 'Play';
 });
 
 // Comment out this line to disable click-to-log canvas coordinates.
