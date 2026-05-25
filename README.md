@@ -191,6 +191,8 @@ You can override those paths with:
 HTTPS_CERT_PATH=/path/to/server.crt HTTPS_KEY_PATH=/path/to/server.key npm start
 ```
 
+If the configured certificate is missing, invalid, or expired, WebND generates a self-signed fallback certificate under `data/.generated-cert/`. You can adjust this with `HTTPS_GENERATED_CERT_DIR` and `HTTPS_GENERATED_CERT_DAYS`.
+
 ## Run With Docker
 
 Build the image:

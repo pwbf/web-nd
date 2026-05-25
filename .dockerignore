@@ -1,11 +1,13 @@
 node_modules
 npm-debug.log
 data/.webnd-sessions.json*
+data/.generated-cert/
 Dockerfile
 .dockerignore
 .git
 .agents
 .codex
+cert
 
 GMapLink2KML/.git
 GMapLink2KML/.venv

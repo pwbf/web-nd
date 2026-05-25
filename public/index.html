@@ -120,7 +120,7 @@
         </section>
 
         <details class="control-section">
-          <summary>Display</summary>
+          <summary>Setup</summary>
           <div class="control-grid">
             <div class="control-row">
               <label for="rangeControl">Range</label>
@@ -148,14 +148,13 @@
             <button type="button" class="active" data-mode="ARC">ARC</button>
             <button type="button" data-mode="ROSE">ROSE</button>
           </div>
-          <label class="check-row" for="hudModeControl">
-            <input id="hudModeControl" type="checkbox" />
-            <span>HUD Mode</span>
-          </label>
-        </details>
-
-        <details class="control-section">
-          <summary>Simulation & GPS</summary>
+          <div class="control-row hud-control-row">
+            <label for="hudModeControl">HUD</label>
+            <label class="check-row" for="hudModeControl">
+              <input id="hudModeControl" type="checkbox" />
+              <span>HUD Mode</span>
+            </label>
+          </div>
           <div class="control-row">
             <label for="locationButton">GPS</label>
             <button type="button" id="locationButton" class="switch-button" data-state="idle" aria-pressed="false">
@@ -166,8 +165,15 @@
           <div class="control-row">
             <label for="playButton">Simulation</label>
             <button type="button" id="playButton" class="switch-button" data-state="idle" aria-pressed="false">
-              <span>Play Simulation</span>
+              <span>Auto Pilot</span>
             </button>
+          </div>
+          <div class="control-row">
+            <label for="soundButton">Sound</label>
+            <button type="button" id="soundButton" class="switch-button" data-state="idle" aria-pressed="false">
+              <span>Sound</span>
+            </button>
+            <output id="soundStatus" for="soundButton"></output>
           </div>
           <div class="control-row">
             <label for="gpsHeadingMinSpeedControl">GPS Heading Min Speed</label>
@@ -220,6 +226,12 @@
               <span>Import KML</span>
             </button>
             <output id="gmapImportStatus" for="gmapUrlControl"></output>
+          </div>
+          <div class="control-row">
+            <span></span>
+            <button type="button" id="cleanCookieButton" class="push-button" aria-label="Clean Cookie">
+              <span>Clean Cookie</span>
+            </button>
           </div>
         </details>
 
@@ -294,7 +306,7 @@
   </main>
   <button type="button" class="mobile-controls-toggle" id="mobileControlsToggle" aria-expanded="false" aria-controls="controlsBody">Menu</button>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-  <footer class="site-footer">WebND project v1.9 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
+  <footer class="site-footer">WebND project v1.10 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
   <script src="app.js"></script>
 </body>
 </html>

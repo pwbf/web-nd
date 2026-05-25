@@ -1,17 +1,19 @@
 const express = require('express');
 const AdmZip = require('adm-zip');
 const crypto = require('crypto');
-const {spawn} = require('child_process');
+const {execFileSync, spawn} = require('child_process');
 const fs = require('fs');
 const https = require('https');
 const os = require('os');
 const path = require('path');
+const tls = require('tls');
 const app = express();
 const PORT = process.env.PORT || 4000;
 const HTTPS_CERT_PATH = process.env.HTTPS_CERT_PATH || path.join(__dirname, 'cert', 'server.crt');
 const HTTPS_KEY_PATH = process.env.HTTPS_KEY_PATH || path.join(__dirname, 'cert', 'server.key');
-const GMAP_JOBS_URL = process.env.GMAP_JOBS_URL || 'https://neb.pwbf.pw:8585';
-const GMAP_JOBS_USER = process.env.GMAP_JOBS_USER || 'admin';
+const HTTPS_GENERATED_CERT_DIR = process.env.HTTPS_GENERATED_CERT_DIR || path.join(__dirname, 'data', '.generated-cert');
+const GMAP_JOBS_URL = process.env.GMAP_JOBS_URL || 'https://127.0.0.1:8585';
+const GMAP_JOBS_USER = process.env.GMAP_JOBS_USER || 'user';
 const GMAP_JOBS_PASSWORD = process.env.GMAP_JOBS_PASSWORD || '';
 const GMAP_JOB_TIMEOUT_MS = Number(process.env.GMAP_JOB_TIMEOUT_MS || 180000);
 const GMAP_LOCAL_TOOL_DIR = process.env.GMAP_LOCAL_TOOL_DIR || path.join(__dirname, 'GMapLink2KML');
@@ -22,8 +24,76 @@ const ROUTE_KML_RETENTION_HOURS = Number(process.env.ROUTE_KML_RETENTION_HOURS |
 const ROUTE_KML_CLEANUP_INTERVAL_MS = Number(process.env.ROUTE_KML_CLEANUP_INTERVAL_MS || 60 * 60 * 1000);
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'webnd_client_id';
 const SESSION_STORE_FILE = process.env.SESSION_STORE_FILE || path.join(__dirname, 'data', '.webnd-sessions.json');
+const AUTOPILOT_DISCONNECT_SOUND_FILE = path.join(__dirname, 'data', 'AirbusAutopilotDisconnectsound.mp3');
 let navaidCsvCache = {mtimeMs: null, navaids: []};
 let airportCsvCache = {mtimeMs: null, airports: []};
+
+function readHttpsOptions(certPath, keyPath) {
+  const cert = fs.readFileSync(certPath);
+  const key = fs.readFileSync(keyPath);
+  const parsedCert = new crypto.X509Certificate(cert);
+  const validFromMs = Date.parse(parsedCert.validFrom);
+  const validToMs = Date.parse(parsedCert.validTo);
+  const now = Date.now();
+  if (!Number.isFinite(validFromMs) || validFromMs > now || !Number.isFinite(validToMs) || validToMs <= now) {
+    throw new Error(`certificate expired or invalid: ${certPath}`);
+  }
+  tls.createSecureContext({cert, key});
+  return {cert, key};
+}
+
+function generatedCertDays() {
+  const days = Number(process.env.HTTPS_GENERATED_CERT_DAYS || 365);
+  return Number.isFinite(days) && days > 0 ? Math.floor(days) : 365;
+}
+
+function generateSelfSignedCertificate(certPath, keyPath) {
+  fs.mkdirSync(path.dirname(certPath), {recursive: true});
+  fs.mkdirSync(path.dirname(keyPath), {recursive: true});
+  execFileSync('openssl', [
+    'req',
+    '-x509',
+    '-newkey', 'rsa:2048',
+    '-nodes',
+    '-sha256',
+    '-days', String(generatedCertDays()),
+    '-keyout', keyPath,
+    '-out', certPath,
+    '-subj', '/CN=localhost',
+    '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1',
+  ], {stdio: 'ignore'});
+  fs.chmodSync(keyPath, 0o600);
+  fs.chmodSync(certPath, 0o644);
+}
+
+function loadHttpsOptions() {
+  try {
+    const options = readHttpsOptions(HTTPS_CERT_PATH, HTTPS_KEY_PATH);
+    console.log(`Using HTTPS certificate ${HTTPS_CERT_PATH}`);
+    return options;
+  } catch (error) {
+    console.warn(`Configured HTTPS certificate unavailable; using generated self-signed certificate: ${error.message}`);
+  }
+
+  const generatedCertPath = path.join(HTTPS_GENERATED_CERT_DIR, 'server.crt');
+  const generatedKeyPath = path.join(HTTPS_GENERATED_CERT_DIR, 'server.key');
+  try {
+    const options = readHttpsOptions(generatedCertPath, generatedKeyPath);
+    console.log(`Using generated HTTPS certificate ${generatedCertPath}`);
+    return options;
+  } catch {
+    // Generate or replace the fallback when it is missing, invalid, or expired.
+  }
+
+  try {
+    generateSelfSignedCertificate(generatedCertPath, generatedKeyPath);
+    const options = readHttpsOptions(generatedCertPath, generatedKeyPath);
+    console.warn(`Generated self-signed HTTPS certificate at ${generatedCertPath}`);
+    return options;
+  } catch (error) {
+    throw new Error(`Unable to prepare HTTPS certificate: ${error.message}`);
+  }
+}
 
 function routeKmlRetentionMs() {
   if (!Number.isFinite(ROUTE_KML_RETENTION_HOURS) || ROUTE_KML_RETENTION_HOURS <= 0) return null;
@@ -852,6 +922,33 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+app.post('/api/session/clear', (req, res) => {
+  if (req.clientSessionId) {
+    delete sessionStore.sessions[req.clientSessionId];
+    try {
+      saveSessionStore();
+    } catch (error) {
+      console.warn('Client session store could not be saved after clearing cookie', error);
+    }
+  }
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: true,
+    path: '/',
+  });
+  res.json({cleared: true});
+});
+
+app.get('/api/sounds/airbus-autopilot-disconnect', (req, res) => {
+  if (!fs.existsSync(AUTOPILOT_DISCONNECT_SOUND_FILE) || !fs.statSync(AUTOPILOT_DISCONNECT_SOUND_FILE).isFile()) {
+    res.status(404).json({error: 'Autopilot disconnect sound file not found'});
+    return;
+  }
+  res.type('audio/mpeg');
+  res.sendFile(AUTOPILOT_DISCONNECT_SOUND_FILE);
+});
+
 app.get('/api/navigation', (req, res) => {
   const kmlProfiles = parseKmlProfiles(req.clientSessionId);
   const requestedProfileId = req.query.profile || null;
@@ -952,10 +1049,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const httpsOptions = {
-  cert: fs.readFileSync(HTTPS_CERT_PATH),
-  key: fs.readFileSync(HTTPS_KEY_PATH),
-};
+const httpsOptions = loadHttpsOptions();
 
 try {
   cleanupRouteKmlFiles();

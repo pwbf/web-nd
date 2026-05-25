@@ -403,6 +403,14 @@ body {
   display: none;
 }
 
+.control-row.disabled {
+  opacity: 0.5;
+}
+
+.hud-control-row {
+  margin-top: 8px;
+}
+
 label {
   color: #aeb4ba;
   font-size: 11px;

@@ -17,6 +17,9 @@ const FONT = '"Roboto Mono", "Consolas", "Lucida Console", monospace';
 const METERS_PER_NM = 1852;
 const DEFAULT_GPS_HEADING_MIN_SPEED_MPS = 2;
 const GPS_PRIMARY_DISPLAY_MS = 60000;
+const AUTOPILOT_DISCONNECT_SOUND_URL = '/api/sounds/airbus-autopilot-disconnect';
+const SETTINGS_COOKIE_NAME = 'webnd_settings';
+const SETTINGS_COOKIE_MAX_AGE = 365 * 24 * 60 * 60;
 
 const DEBUG_CANVAS_COORDS = true;
 const DEBUG_INVERTED_NAVAID = true;
@@ -66,6 +69,10 @@ let visibleAirportTableSignature = '';
 let gpsPrimaryVisibleUntil = 0;
 let toastTimer = null;
 let serverConfig = {gmapImportEnabled: false, gmapImportProvider: null};
+let soundEnabled = false;
+let soundAvailable = false;
+let autopilotDisconnectSoundObjectUrl = '';
+let savedSettings = {};
 
 const els = {
   instrument: document.querySelector('.instrument'),
@@ -99,6 +106,7 @@ const els = {
   mobileControlsToggle: document.getElementById('mobileControlsToggle'),
   profile: document.getElementById('profileControl'),
   kmlDeleteButton: document.getElementById('kmlDeleteButton'),
+  cleanCookieButton: document.getElementById('cleanCookieButton'),
   kmlProfileStatus: document.getElementById('kmlProfileStatus'),
   gmapImportRow: document.getElementById('gmapImportRow'),
   gmapUrl: document.getElementById('gmapUrlControl'),
@@ -134,6 +142,8 @@ const els = {
   gpsHeadingMinSpeedControl: document.getElementById('gpsHeadingMinSpeedControl'),
   gpsHeadingMinSpeedReadout: document.getElementById('gpsHeadingMinSpeedReadout'),
   play: document.getElementById('playButton'),
+  sound: document.getElementById('soundButton'),
+  soundStatus: document.getElementById('soundStatus'),
   location: document.getElementById('locationButton'),
   gpsStatus: document.getElementById('gpsStatus'),
   fakeHeading: document.getElementById('fakeHeadingControl'),
@@ -143,6 +153,7 @@ const els = {
 };
 
 els.copyrightYear.textContent = String(new Date().getFullYear());
+savedSettings = loadSettingsCookie();
 
 function debugValue(value, formatter = (nextValue) => nextValue) {
   return Number.isFinite(value) ? formatter(value) : 'n/a';
@@ -171,6 +182,123 @@ function showToast(message) {
   }, 3200);
 }
 
+function readCookie(name) {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const cookie = document.cookie.split('; ').find((item) => item.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : '';
+}
+
+function writeCookie(name, value, maxAge = SETTINGS_COOKIE_MAX_AGE) {
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Lax${secure}`;
+}
+
+function clearReadableCookies() {
+  document.cookie.split(';').forEach((cookie) => {
+    const [rawName] = cookie.trim().split('=');
+    if (!rawName) return;
+    document.cookie = `${rawName}=; Max-Age=0; Path=/; SameSite=Lax`;
+    document.cookie = `${rawName}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;
+  });
+}
+
+function loadSettingsCookie() {
+  try {
+    const raw = readCookie(SETTINGS_COOKIE_NAME);
+    return raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    console.warn('Unable to load settings cookie', error);
+    return {};
+  }
+}
+
+function numberSetting(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function collectSettings() {
+  return {
+    version: 1,
+    profileId: els.profile?.value || '',
+    rangeNm: Number(els.range.value),
+    navaidRangeNm: Number(els.navaidRange.value),
+    unit: els.unit.value,
+    mode: state.mode,
+    hudMode: els.hudMode.checked,
+    heading: Number(els.headingControl.value),
+    latitude: Number(els.latitudeControl.value),
+    longitude: Number(els.longitudeControl.value),
+    trueAirSpeed: Number(els.trueAirSpeedControl.value),
+    windSpeed: Number(els.windSpeedControl.value),
+    windDirection: Number(els.windDirectionControl.value),
+    gpsHeadingMinSpeedMps: Number(els.gpsHeadingMinSpeedControl.value),
+    navaidTypeFilters: {...state.navaidTypeFilters},
+    showAirports: Boolean(state.showAirports),
+    showCourseRoute: state.showCourseRoute !== false,
+    soundEnabled: Boolean(soundEnabled),
+    controlsCollapsed: els.controlsPanel.classList.contains('collapsed'),
+  };
+}
+
+function saveSettings() {
+  try {
+    savedSettings = collectSettings();
+    writeCookie(SETTINGS_COOKIE_NAME, JSON.stringify(savedSettings));
+  } catch (error) {
+    console.warn('Unable to save settings cookie', error);
+  }
+}
+
+function applySavedSettingsToState() {
+  if (!savedSettings || typeof savedSettings !== 'object') return;
+
+  state.rangeNm = numberSetting(savedSettings.rangeNm, state.rangeNm);
+  state.navaidRangeNm = numberSetting(savedSettings.navaidRangeNm, state.navaidRangeNm);
+  state.mode = ['ARC', 'ROSE'].includes(savedSettings.mode) ? savedSettings.mode : state.mode;
+  state.heading = normalizeDegrees(numberSetting(savedSettings.heading, state.heading));
+  state.trueAirSpeed = numberSetting(savedSettings.trueAirSpeed, state.trueAirSpeed);
+  state.wind = {
+    ...state.wind,
+    speed: numberSetting(savedSettings.windSpeed, state.wind.speed),
+    direction: normalizeDegrees(numberSetting(savedSettings.windDirection, state.wind.direction)),
+  };
+  state.gpsHeadingMinSpeedMps = numberSetting(savedSettings.gpsHeadingMinSpeedMps, state.gpsHeadingMinSpeedMps);
+  if (savedSettings.navaidTypeFilters && typeof savedSettings.navaidTypeFilters === 'object') {
+    state.navaidTypeFilters = {...state.navaidTypeFilters, ...savedSettings.navaidTypeFilters};
+  }
+  if (typeof savedSettings.showAirports === 'boolean') {
+    state.showAirports = savedSettings.showAirports;
+  }
+  if (typeof savedSettings.showCourseRoute === 'boolean') {
+    state.showCourseRoute = savedSettings.showCourseRoute;
+  }
+  if (Number.isFinite(Number(savedSettings.latitude)) && Number.isFinite(Number(savedSettings.longitude))) {
+    state.currentPosition = {
+      ...(state.currentPosition || {}),
+      lat: Number(savedSettings.latitude),
+      lon: Number(savedSettings.longitude),
+      routeDistanceNm: nearestRouteDistance({lat: Number(savedSettings.latitude), lon: Number(savedSettings.longitude)}),
+    };
+  }
+  applyWindCorrection();
+}
+
+function applySavedSettingsToControls() {
+  if (!savedSettings || typeof savedSettings !== 'object') return;
+  if ([...els.range.options].some((option) => option.value === String(savedSettings.rangeNm))) {
+    els.range.value = String(savedSettings.rangeNm);
+  }
+  if ([...els.navaidRange.options].some((option) => option.value === String(savedSettings.navaidRangeNm))) {
+    els.navaidRange.value = String(savedSettings.navaidRangeNm);
+  }
+  if ([...els.unit.options].some((option) => option.value === savedSettings.unit)) {
+    els.unit.value = savedSettings.unit;
+  }
+  els.hudMode.checked = Boolean(savedSettings.hudMode);
+  els.instrument.classList.toggle('hud-mirror', els.hudMode.checked);
+}
+
 function hideLoadingOverlay() {
   if (els.loadingOverlay) {
     els.loadingOverlay.hidden = true;
@@ -186,6 +314,30 @@ function setControlsCollapsed(collapsed) {
     els.mobileControlsToggle.textContent = label;
     els.mobileControlsToggle.classList.toggle('open', !collapsed);
     els.mobileControlsToggle.setAttribute('aria-expanded', String(!collapsed));
+  }
+}
+
+function applySavedSettingsAfterNavigation() {
+  applySavedSettingsToState();
+  applySavedSettingsToControls();
+  syncRangeOptionLabels();
+  syncLayerControls();
+  syncHeadingControl();
+  syncPositionControls();
+  els.trueAirSpeedControl.value = String(Math.round(state.trueAirSpeed));
+  els.trueAirSpeedReadout.textContent = speedText(state.trueAirSpeed);
+  els.windSpeedControl.value = String(Math.round(state.wind.speed));
+  els.windSpeedReadout.textContent = speedText(state.wind.speed);
+  els.windDirectionControl.value = String(Math.round(state.wind.direction));
+  els.windDirectionReadout.textContent = `${headingText(state.wind.direction)}°`;
+  els.gpsHeadingMinSpeedControl.value = String(state.gpsHeadingMinSpeedMps);
+  els.gpsHeadingMinSpeedReadout.textContent = gpsHeadingMinSpeedText(state.gpsHeadingMinSpeedMps);
+  updateModeButtons();
+  syncRouteProgressAvailability();
+  if (soundAvailable) {
+    setSoundSwitchState(Boolean(savedSettings.soundEnabled));
+  } else if (savedSettings.soundEnabled) {
+    setSoundSwitchState(false, {fault: true, message: els.soundStatus?.textContent || 'Sound unavailable'});
   }
 }
 
@@ -472,6 +624,7 @@ function mergeNavigation(nextState) {
   recomputeAirportsFromPosition();
   applyWindCorrection();
   updateModeButtons();
+  syncRouteProgressAvailability();
 }
 
 function clearRouteState() {
@@ -483,6 +636,17 @@ function clearRouteState() {
   state.distanceNm = null;
   if (state.currentPosition) {
     state.currentPosition.routeDistanceNm = 0;
+  }
+  syncRouteProgressAvailability();
+}
+
+function syncRouteProgressAvailability() {
+  const routeAvailable = Boolean(els.profile.value && state.routeDistanceNm > 0 && state.routePath?.length);
+  els.progressControl.disabled = !routeAvailable;
+  els.progressControlRow.classList.toggle('disabled', !routeAvailable);
+  if (!routeAvailable) {
+    els.progressControl.value = '0';
+    els.progressReadout.textContent = '0%';
   }
 }
 
@@ -504,6 +668,9 @@ async function loadProfiles() {
       option.selected = profile.id === activeProfileId;
       els.profile.append(option);
     });
+    if (savedSettings.profileId && [...els.profile.options].some((option) => option.value === savedSettings.profileId)) {
+      els.profile.value = savedSettings.profileId;
+    }
     els.profile.disabled = false;
     syncKmlProfileActions();
   } catch (error) {
@@ -516,6 +683,7 @@ async function loadProfiles() {
 
 function syncKmlProfileActions() {
   els.kmlDeleteButton.disabled = !els.profile.value;
+  syncRouteProgressAvailability();
 }
 
 async function loadNavigation(profileId = '') {
@@ -581,9 +749,12 @@ async function importGoogleMapsRoute() {
     const [firstFile] = result.files || [];
     if (firstFile) {
       els.profile.value = firstFile;
+      saveSettings();
       await loadNavigation(firstFile);
+      applySavedSettingsAfterNavigation();
       baselineState = structuredClone(state);
       syncKmlProfileActions();
+      saveSettings();
     }
     els.gmapImport.dataset.state = 'available';
     els.gmapImport.setAttribute('aria-pressed', 'true');
@@ -647,8 +818,12 @@ async function uploadKmlProfile() {
 
     await loadProfiles();
     els.profile.value = result.file;
+    saveSettings();
     await loadNavigation(result.file);
+    applySavedSettingsAfterNavigation();
     baselineState = structuredClone(state);
+    syncKmlProfileActions();
+    saveSettings();
     els.kmlUploadButton.dataset.state = 'available';
     els.kmlUploadButton.setAttribute('aria-pressed', 'true');
     els.kmlUploadStatus.textContent = `Uploaded ${result.file}`;
@@ -682,8 +857,12 @@ async function deleteSelectedKmlProfile() {
     await loadProfiles();
     els.profile.value = '';
     clearRouteState();
+    saveSettings();
     await loadNavigation('');
+    applySavedSettingsAfterNavigation();
     baselineState = structuredClone(state);
+    syncKmlProfileActions();
+    saveSettings();
     els.kmlProfileStatus.textContent = `Deleted ${result.deleted}`;
     debugLog(`KML profile deleted: ${result.deleted}`);
   } catch (error) {
@@ -691,6 +870,29 @@ async function deleteSelectedKmlProfile() {
     els.kmlProfileStatus.textContent = error.message;
   } finally {
     syncKmlProfileActions();
+  }
+}
+
+async function cleanClientCookies() {
+  if (!window.confirm('Clean cookies for this WebND session? Uploaded/imported KML ownership tied to this browser session will no longer be available.')) {
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/session/clear', {method: 'POST'});
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({error: 'Unable to clean cookie'}));
+      throw new Error(error.error || 'Unable to clean cookie');
+    }
+    clearReadableCookies();
+    savedSettings = {};
+    showToast('Cookies cleaned');
+    window.setTimeout(() => {
+      window.location.reload();
+    }, 350);
+  } catch (error) {
+    els.kmlProfileStatus.textContent = error.message;
+    debugLog(`Cookie cleanup failed: ${error.message}`);
   }
 }
 
@@ -936,10 +1138,57 @@ function setGpsSwitchState(mode, message = '') {
   }
 }
 
+async function preloadAutopilotDisconnectSound() {
+  try {
+    const response = await fetch(AUTOPILOT_DISCONNECT_SOUND_URL, {cache: 'force-cache'});
+    if (!response.ok) {
+      const reason = `MP3 preload failed: HTTP ${response.status}`;
+      setSoundSwitchState(false, {fault: true, message: reason});
+      debugLog(reason);
+      return;
+    }
+    const blob = await response.blob();
+    if (autopilotDisconnectSoundObjectUrl) {
+      URL.revokeObjectURL(autopilotDisconnectSoundObjectUrl);
+    }
+    autopilotDisconnectSoundObjectUrl = URL.createObjectURL(blob);
+    soundAvailable = true;
+    setSoundSwitchState(false, {message: 'MP3 cached'});
+    debugLog('Sound preload complete');
+  } catch (error) {
+    console.warn('Unable to preload autopilot disconnect sound', error);
+    const reason = `MP3 preload failed: ${error.message}`;
+    setSoundSwitchState(false, {fault: true, message: reason});
+    debugLog(reason);
+  }
+}
+
+function playAutopilotDisconnectSound() {
+  const audio = new Audio(autopilotDisconnectSoundObjectUrl || AUTOPILOT_DISCONNECT_SOUND_URL);
+  audio.play().catch((error) => {
+    console.warn('Unable to play autopilot disconnect sound', error);
+    debugLog(`Sound failed: ${error.message}`);
+  });
+}
+
+function setSoundSwitchState(enabled, {fault = false, message = ''} = {}) {
+  soundEnabled = enabled;
+  els.sound.dataset.state = fault ? 'fault' : enabled ? 'active' : 'idle';
+  els.sound.setAttribute('aria-pressed', String(enabled));
+  if (els.soundStatus) {
+    els.soundStatus.textContent = message;
+    els.soundStatus.dataset.state = fault ? 'fault' : enabled ? 'available' : '';
+  }
+}
+
 function setSimulationSwitchState(playing) {
+  const wasPlaying = simulationPlaying;
   simulationPlaying = playing;
   els.play.dataset.state = playing ? 'active' : 'idle';
   els.play.setAttribute('aria-pressed', String(playing));
+  if (wasPlaying && !playing && soundEnabled) {
+    playAutopilotDisconnectSound();
+  }
 }
 
 function resetSimulation() {
@@ -1717,30 +1966,36 @@ function tick(time) {
 
 els.range.addEventListener('change', (event) => {
   state.rangeNm = Number(event.target.value);
+  saveSettings();
 });
 
 els.navaidRange.addEventListener('change', (event) => {
   state.navaidRangeNm = Number(event.target.value);
   visibleNavaidTableSignature = '';
+  saveSettings();
 });
 
 function updateNavaidTypeFilter(key, checked) {
   if (checked && key === 'vor') {
     applyExclusiveMapLayer('vor-d');
+    saveSettings();
     return;
   }
   if (checked && key === 'dme') {
     applyExclusiveMapLayer('vor-d');
+    saveSettings();
     return;
   }
   if (checked && key === 'ndb') {
     applyExclusiveMapLayer('ndb');
+    saveSettings();
     return;
   }
 
   state.navaidTypeFilters = {...state.navaidTypeFilters, [key]: checked};
   visibleNavaidTableSignature = '';
   syncLayerControls();
+  saveSettings();
 }
 
 els.showVor.addEventListener('change', (event) => updateNavaidTypeFilter('vor', event.target.checked));
@@ -1756,6 +2011,7 @@ els.showAirports.addEventListener('change', (event) => {
     visibleAirportTableSignature = '';
     syncLayerControls();
   }
+  saveSettings();
 });
 
 els.layerButtons.forEach((button) => {
@@ -1768,10 +2024,12 @@ els.layerButtons.forEach((button) => {
       } else {
         syncLayerControls();
       }
+      saveSettings();
       return;
     }
     if (button.disabled || layer === 'wpt') return;
     applyExclusiveMapLayer(activeMapLayer() === layer ? null : layer);
+    saveSettings();
   });
 });
 
@@ -1796,12 +2054,15 @@ els.kmlUpload.addEventListener('change', () => {
   }
 });
 els.kmlDeleteButton.addEventListener('click', deleteSelectedKmlProfile);
-els.kmlDeleteButton.addEventListener('pointerdown', () => {
-  els.kmlDeleteButton.classList.add('is-pressing');
-});
-['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach((eventName) => {
-  els.kmlDeleteButton.addEventListener(eventName, () => {
-    els.kmlDeleteButton.classList.remove('is-pressing');
+els.cleanCookieButton.addEventListener('click', cleanClientCookies);
+[els.kmlDeleteButton, els.cleanCookieButton].forEach((button) => {
+  button.addEventListener('pointerdown', () => {
+    button.classList.add('is-pressing');
+  });
+  ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach((eventName) => {
+    button.addEventListener(eventName, () => {
+      button.classList.remove('is-pressing');
+    });
   });
 });
 
@@ -1813,17 +2074,22 @@ els.profile.addEventListener('change', async (event) => {
   if (!event.target.value) {
     clearRouteState();
   }
+  saveSettings();
   await loadNavigation(event.target.value);
+  applySavedSettingsAfterNavigation();
   baselineState = structuredClone(state);
+  saveSettings();
   debugLog(event.target.value ? `KML profile switched to ${event.target.value}` : 'KML profile cleared');
 });
 
 els.controlsToggle.addEventListener('click', () => {
   setControlsCollapsed(!els.controlsPanel.classList.contains('collapsed'));
+  saveSettings();
 });
 
 els.mobileControlsToggle.addEventListener('click', () => {
   setControlsCollapsed(!els.controlsPanel.classList.contains('collapsed'));
+  saveSettings();
 });
 
 document.addEventListener('pointerdown', (event) => {
@@ -1832,6 +2098,7 @@ document.addEventListener('pointerdown', (event) => {
   if (els.mobileControlsToggle?.contains(event.target)) return;
   if (els.controlsToggle?.contains(event.target)) return;
   setControlsCollapsed(true);
+  saveSettings();
 });
 
 els.unit.addEventListener('change', () => {
@@ -1840,11 +2107,13 @@ els.unit.addEventListener('change', () => {
   els.windSpeedReadout.textContent = speedText(state.wind.speed);
   visibleNavaidTableSignature = '';
   visibleAirportTableSignature = '';
+  saveSettings();
   debugLog(`Units changed to ${distanceUnitText()}`);
 });
 
 els.hudMode.addEventListener('change', (event) => {
   els.instrument.classList.toggle('hud-mirror', event.target.checked);
+  saveSettings();
   debugLog(`HUD mirror ${event.target.checked ? 'enabled' : 'disabled'}`);
 });
 
@@ -1852,6 +2121,7 @@ els.headingControl.addEventListener('input', (event) => {
   stopLocationWatch();
   state.heading = Number(event.target.value);
   applyWindCorrection();
+  saveSettings();
 });
 
 function updateManualPosition() {
@@ -1869,6 +2139,7 @@ function updateManualPosition() {
   recomputeNavigationFromPosition();
   recomputeNavaidsFromPosition();
   recomputeAirportsFromPosition();
+  saveSettings();
 }
 
 els.latitudeControl.addEventListener('change', updateManualPosition);
@@ -1886,29 +2157,34 @@ els.trueAirSpeedControl.addEventListener('input', (event) => {
   state.trueAirSpeed = Number(event.target.value);
   els.trueAirSpeedReadout.textContent = speedText(state.trueAirSpeed);
   applyWindCorrection();
+  saveSettings();
 });
 
 els.windSpeedControl.addEventListener('input', (event) => {
   state.wind.speed = Number(event.target.value);
   els.windSpeedReadout.textContent = speedText(state.wind.speed);
   applyWindCorrection();
+  saveSettings();
 });
 
 els.windDirectionControl.addEventListener('input', (event) => {
   state.wind.direction = Number(event.target.value);
   els.windDirectionReadout.textContent = `${headingText(state.wind.direction)}°`;
   applyWindCorrection();
+  saveSettings();
 });
 
 els.gpsHeadingMinSpeedControl.addEventListener('input', (event) => {
   state.gpsHeadingMinSpeedMps = Number(event.target.value);
   els.gpsHeadingMinSpeedReadout.textContent = gpsHeadingMinSpeedText(state.gpsHeadingMinSpeedMps);
+  saveSettings();
 });
 
 els.modeButtons.forEach((button) => {
   button.addEventListener('click', () => {
     state.mode = button.dataset.mode;
     updateModeButtons();
+    saveSettings();
   });
 });
 
@@ -1923,6 +2199,17 @@ els.play.addEventListener('click', () => {
   setSimulationSwitchState(true);
 });
 
+els.sound.addEventListener('click', () => {
+  if (!soundAvailable) {
+    const reason = 'Sound unavailable: autopilot disconnect MP3 is not loaded';
+    setSoundSwitchState(false, {fault: true, message: reason});
+    debugLog(reason);
+    return;
+  }
+  setSoundSwitchState(!soundEnabled);
+  saveSettings();
+});
+
 els.location.addEventListener('click', () => {
   if (locationWatchId !== null || els.location.dataset.state === 'fault' || els.location.dataset.state === 'available') {
     stopLocationWatch();
@@ -1934,11 +2221,11 @@ els.location.addEventListener('click', () => {
 // Comment out this line to disable click-to-log canvas coordinates.
 enableCanvasCoordinateDebug();
 
-setControlsCollapsed(true);
+setControlsCollapsed(savedSettings.controlsCollapsed ?? true);
 
-Promise.all([loadServerConfig(), loadProfiles()]).then(() => loadNavigation()).finally(() => {
+Promise.all([loadServerConfig(), loadProfiles(), preloadAutopilotDisconnectSound()]).then(() => loadNavigation(els.profile.value)).finally(() => {
+  applySavedSettingsAfterNavigation();
   baselineState = structuredClone(state);
-  updateModeButtons();
   draw();
   hideLoadingOverlay();
   requestAnimationFrame(tick);
