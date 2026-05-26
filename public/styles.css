@@ -822,6 +822,97 @@ button.active {
   outline-offset: 2px;
 }
 
+.ap-button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  width: 100%;
+  padding: 0;
+  color: #f7f7f7;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+}
+
+.ap-button:hover {
+  border-color: transparent;
+}
+
+.ap-button::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 54px;
+  height: 54px;
+  background: #020304;
+  border: 2px solid #f1f1f1;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 0 8px rgb(255 255 255 / 12%),
+    inset 0 -3px 8px rgb(0 0 0 / 80%),
+    0 1px 3px rgb(0 0 0 / 55%);
+}
+
+.ap-button::after {
+  content: "";
+  position: absolute;
+  top: 11px;
+  left: 10px;
+  width: 38px;
+  height: 3px;
+  background: #f1f1f1;
+  border-radius: 2px;
+  box-shadow:
+    0 6px 0 #f1f1f1,
+    0 12px 0 #f1f1f1;
+}
+
+.ap-button[data-state="active"]::after {
+  background: var(--green);
+  box-shadow:
+    0 6px 0 var(--green),
+    0 12px 0 var(--green),
+    0 0 6px rgb(0 255 59 / 75%);
+}
+
+.ap-button-face-label {
+  position: absolute;
+  left: 0;
+  top: 35px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  color: #f7f7f7;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 85%);
+}
+
+.ap-button-side-label {
+  grid-column: 2;
+  color: #dfe7ea;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.ap-button:active::before {
+  transform: translateY(1px);
+  filter: brightness(0.82);
+}
+
+.ap-button:focus-visible::before {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+}
+
 .push-button {
   position: relative;
   justify-self: start;
