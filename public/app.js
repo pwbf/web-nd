@@ -73,6 +73,7 @@ let soundEnabled = false;
 let soundAvailable = false;
 let autopilotDisconnectSoundObjectUrl = '';
 let savedSettings = {};
+let browserPositionStatus = null;
 
 const els = {
   instrument: document.querySelector('.instrument'),
@@ -141,6 +142,16 @@ const els = {
   windDirectionReadout: document.getElementById('windDirectionReadout'),
   gpsHeadingMinSpeedControl: document.getElementById('gpsHeadingMinSpeedControl'),
   gpsHeadingMinSpeedReadout: document.getElementById('gpsHeadingMinSpeedReadout'),
+  gpsCoordinateFormat: document.getElementById('gpsCoordinateFormatControl'),
+  statusGpsIndicator: document.getElementById('statusGpsIndicator'),
+  statusGpsQuality: document.getElementById('statusGpsQuality'),
+  statusGpsLat: document.getElementById('statusGpsLat'),
+  statusGpsLon: document.getElementById('statusGpsLon'),
+  statusHeadings: document.getElementById('statusHeadings'),
+  statusAltitude: document.getElementById('statusAltitude'),
+  statusSpeed: document.getElementById('statusSpeed'),
+  statusAccuracy: document.getElementById('statusAccuracy'),
+  statusTimestamp: document.getElementById('statusTimestamp'),
   play: document.getElementById('playButton'),
   sound: document.getElementById('soundButton'),
   soundStatus: document.getElementById('soundStatus'),
@@ -233,6 +244,7 @@ function collectSettings() {
     windSpeed: Number(els.windSpeedControl.value),
     windDirection: Number(els.windDirectionControl.value),
     gpsHeadingMinSpeedMps: Number(els.gpsHeadingMinSpeedControl.value),
+    gpsCoordinateFormat: els.gpsCoordinateFormat.value,
     navaidTypeFilters: {...state.navaidTypeFilters},
     showAirports: Boolean(state.showAirports),
     showCourseRoute: state.showCourseRoute !== false,
@@ -297,6 +309,9 @@ function applySavedSettingsToControls() {
   }
   els.hudMode.checked = Boolean(savedSettings.hudMode);
   els.instrument.classList.toggle('hud-mirror', els.hudMode.checked);
+  if (['decimal', 'dms'].includes(savedSettings.gpsCoordinateFormat)) {
+    els.gpsCoordinateFormat.value = savedSettings.gpsCoordinateFormat;
+  }
 }
 
 function hideLoadingOverlay() {
@@ -334,6 +349,7 @@ function applySavedSettingsAfterNavigation() {
   els.gpsHeadingMinSpeedReadout.textContent = gpsHeadingMinSpeedText(state.gpsHeadingMinSpeedMps);
   updateModeButtons();
   syncRouteProgressAvailability();
+  syncBrowserStatus();
   if (soundAvailable) {
     setSoundSwitchState(Boolean(savedSettings.soundEnabled));
   } else if (savedSettings.soundEnabled) {
@@ -406,6 +422,27 @@ function navaidFrequencyText(frequencyKhz) {
 
 function coordinateText(value) {
   return Number.isFinite(value) ? value.toFixed(5) : '---';
+}
+
+function coordinateDmsText(value, axis) {
+  if (!Number.isFinite(value)) return '---';
+  let totalSeconds = Math.round(Math.abs(value) * 3600);
+  const degrees = Math.floor(totalSeconds / 3600);
+  totalSeconds -= degrees * 3600;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds - minutes * 60;
+  const hemisphere = axis === 'lat'
+    ? value >= 0 ? 'N' : 'S'
+    : value >= 0 ? 'E' : 'W';
+  return `${degrees}°${String(minutes).padStart(2, '0')}′${String(seconds).padStart(2, '0')}″ ${hemisphere}`;
+}
+
+function browserCoordinateText(value, axis) {
+  if (!Number.isFinite(value)) return '---';
+  if (els.gpsCoordinateFormat.value === 'dms') {
+    return coordinateDmsText(value, axis);
+  }
+  return value.toFixed(6);
 }
 
 function tableDistanceText(distanceNm) {
@@ -583,7 +620,10 @@ function rangeLabel(value) {
 
 function etaText(distanceNm, groundSpeed) {
   if (!Number.isFinite(distanceNm) || !Number.isFinite(groundSpeed) || groundSpeed <= 0) {
-    return '--:--';
+    return '-- : --';
+  }
+  if (nmPerHourToMetersPerSecond(groundSpeed) < state.gpsHeadingMinSpeedMps) {
+    return '-- : --';
   }
 
   const totalSeconds = Math.max(0, Math.round((distanceNm / groundSpeed) * 3600));
@@ -914,6 +954,71 @@ function syncReadouts() {
   const gpsPrimaryVisible = performance.now() < gpsPrimaryVisibleUntil;
   els.trafficStatus.textContent = 'GPS PRIMARY';
   els.trafficStatus.hidden = !gpsPrimaryVisible;
+  syncBrowserStatus();
+}
+
+function setStatusText(element, value) {
+  if (element) element.textContent = value || '---';
+}
+
+function gpsQualityFromAccuracy(accuracy) {
+  if (locationWatchId === null || !browserPositionStatus) {
+    return {state: 'off', label: 'OFF'};
+  }
+  if (!Number.isFinite(accuracy)) {
+    return {state: 'bad', label: 'NO ACCURACY'};
+  }
+  if (accuracy < 7) {
+    return {state: 'good', label: `GOOD ${accuracy.toFixed(1)} m`};
+  }
+  if (accuracy < 25) {
+    return {state: 'medium', label: `MEDIUM ${accuracy.toFixed(1)} m`};
+  }
+  return {state: 'bad', label: `BAD ${accuracy.toFixed(1)} m`};
+}
+
+function syncGpsQualityIndicator(accuracy = null) {
+  const quality = gpsQualityFromAccuracy(accuracy);
+  if (els.statusGpsIndicator) {
+    els.statusGpsIndicator.className = `status-indicator ${quality.state}`;
+    els.statusGpsIndicator.setAttribute('aria-label', `GPS ${quality.label}`);
+  }
+  setStatusText(els.statusGpsQuality, quality.label);
+}
+
+function syncBrowserStatus() {
+  if (!browserPositionStatus) {
+    syncGpsQualityIndicator();
+    setStatusText(els.statusGpsLat, '---');
+    setStatusText(els.statusGpsLon, '---');
+    setStatusText(els.statusHeadings, '---');
+    setStatusText(els.statusAltitude, '---');
+    setStatusText(els.statusSpeed, '---');
+    setStatusText(els.statusAccuracy, '---');
+    setStatusText(els.statusTimestamp, '---');
+    return;
+  }
+
+  const {latitude, longitude, altitude, accuracy, altitudeAccuracy, heading, fakeHeading, speed, movementSpeed, timestamp} = browserPositionStatus;
+  syncGpsQualityIndicator(accuracy);
+  const headingParts = [
+    `GPS ${debugValue(heading, (value) => `${normalizeDegrees(value).toFixed(1)} deg`)}`,
+    `Vector ${debugValue(fakeHeading, (value) => `${normalizeDegrees(value).toFixed(1)} deg`)}`,
+    `ND ${headingText(state.heading)}`,
+  ];
+  setStatusText(els.statusGpsLat, browserCoordinateText(latitude, 'lat'));
+  setStatusText(els.statusGpsLon, browserCoordinateText(longitude, 'lon'));
+  setStatusText(els.statusHeadings, headingParts.join(' / '));
+  setStatusText(els.statusAltitude, debugValue(altitude, (value) => `${value.toFixed(1)} m / ${(value * 3.28084).toFixed(0)} ft`));
+  setStatusText(els.statusSpeed, [
+    `GPS ${debugValue(speed, (value) => `${value.toFixed(2)} m/s`)}`,
+    `Vector ${debugValue(movementSpeed, (value) => `${value.toFixed(2)} m/s`)}`,
+  ].join(' / '));
+  setStatusText(els.statusAccuracy, [
+    `H ${debugValue(accuracy, (value) => `${value.toFixed(1)} m`)}`,
+    `V ${debugValue(altitudeAccuracy, (value) => `${value.toFixed(1)} m`)}`,
+  ].join(' / '));
+  setStatusText(els.statusTimestamp, Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : '---');
 }
 
 function visibleNavaidsForView(view) {
@@ -1205,6 +1310,7 @@ function stopLocationWatch() {
     debugLog('GPS watch stopped');
   }
   setGpsSwitchState('idle');
+  syncBrowserStatus();
   els.progressControlRow.hidden = false;
   els.trueAirSpeedControlRow.hidden = false;
 }
@@ -1222,6 +1328,18 @@ function applyBrowserPosition(position) {
     : null;
   const fakeHeadingMode = Boolean(els.fakeHeading?.checked);
   const useFakeHeading = fakeHeadingMode && Number.isFinite(fakeHeading);
+  browserPositionStatus = {
+    latitude,
+    longitude,
+    altitude,
+    accuracy,
+    altitudeAccuracy,
+    heading,
+    fakeHeading,
+    speed,
+    movementSpeed,
+    timestamp: position.timestamp,
+  };
 
   state.currentPosition = {
     ...(state.currentPosition || {}),
@@ -1296,6 +1414,7 @@ function stopLocationWatchAfterError(message) {
     debugLog('GPS watch stopped');
   }
   setGpsSwitchState('fault', message);
+  syncBrowserStatus();
   els.progressControlRow.hidden = false;
   els.trueAirSpeedControlRow.hidden = false;
 }
@@ -2177,6 +2296,11 @@ els.windDirectionControl.addEventListener('input', (event) => {
 els.gpsHeadingMinSpeedControl.addEventListener('input', (event) => {
   state.gpsHeadingMinSpeedMps = Number(event.target.value);
   els.gpsHeadingMinSpeedReadout.textContent = gpsHeadingMinSpeedText(state.gpsHeadingMinSpeedMps);
+  saveSettings();
+});
+
+els.gpsCoordinateFormat.addEventListener('change', () => {
+  syncBrowserStatus();
   saveSettings();
 });
 

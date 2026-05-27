@@ -298,6 +298,27 @@
           </div>
         </details>
 
+        <details class="control-section">
+          <summary>Status</summary>
+          <div class="control-row status-format-row">
+            <label for="gpsCoordinateFormatControl">GPS Format</label>
+            <select id="gpsCoordinateFormatControl">
+              <option value="decimal" selected>dd.dddddd</option>
+              <option value="dms">DD°MM′SS″ N</option>
+            </select>
+          </div>
+          <dl class="status-grid">
+            <dt>GPS</dt><dd><span id="statusGpsIndicator" class="status-indicator off" aria-label="GPS status"></span><span id="statusGpsQuality">OFF</span></dd>
+            <dt>GPS lat</dt><dd id="statusGpsLat">---</dd>
+            <dt>GPS lon</dt><dd id="statusGpsLon">---</dd>
+            <dt>Headings</dt><dd id="statusHeadings">---</dd>
+            <dt>Altitude</dt><dd id="statusAltitude">---</dd>
+            <dt>Speed</dt><dd id="statusSpeed">---</dd>
+            <dt>Accuracy</dt><dd id="statusAccuracy">---</dd>
+            <dt>Timestamp</dt><dd id="statusTimestamp">---</dd>
+          </dl>
+        </details>
+
         <details class="debug-panel" id="debugPanel">
           <summary>Debug</summary>
           <pre id="debugLog" class="debug-log" aria-live="polite"></pre>
@@ -307,7 +328,7 @@
   </main>
   <button type="button" class="mobile-controls-toggle" id="mobileControlsToggle" aria-expanded="false" aria-controls="controlsBody">Menu</button>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-  <footer class="site-footer">WebND project v1.11 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
+  <footer class="site-footer">WebND project v1.12 | &copy; <span id="copyrightYear"> </span> PWBFLab. All rights reserved.</footer>
   <script src="app.js"></script>
 </body>
 </html>

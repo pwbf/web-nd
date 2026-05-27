@@ -514,6 +514,63 @@ output[data-state="fault"] {
   display: none;
 }
 
+.status-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.status-grid dt {
+  color: #aeb4ba;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.status-grid dd {
+  min-width: 0;
+  margin: 0;
+  color: #dfe7ea;
+  overflow-wrap: anywhere;
+}
+
+.status-format-row {
+  margin-bottom: 8px;
+}
+
+.status-indicator {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border: 1px solid #dfe7ea;
+  border-radius: 50%;
+  background: #7a7f84;
+  box-shadow: 0 0 4px rgb(122 127 132 / 60%);
+  vertical-align: middle;
+}
+
+.status-indicator.good {
+  background: var(--green);
+  box-shadow: 0 0 6px rgb(0 255 59 / 70%);
+}
+
+.status-indicator.medium {
+  background: var(--amber);
+  box-shadow: 0 0 6px rgb(227 199 0 / 70%);
+}
+
+.status-indicator.bad {
+  background: #ff3838;
+  box-shadow: 0 0 6px rgb(255 56 56 / 70%);
+}
+
+.status-indicator.off {
+  background: #7a7f84;
+}
+
 .control-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
